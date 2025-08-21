@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cheesso Chainable API Test</title>
+</head>
+<body>
+    <h1>Cheesso Chainable API Test</h1>
+    
+    <!-- Traditional API -->
+    <div>
+        <h2>Traditional API</h2>
+        <div id="traditional-auth"></div>
+    </div>
+    
+    <!-- Chainable API -->
+    <div>
+        <h2>Chainable API</h2>
+        <div id="chainable-auth"></div>
+    </div>
+
+    <!-- Include Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    
+    <!-- Include Cheesso -->
+    <script src="./dist/cheesso.js"></script>
+    
+    <script>
+        // Firebase config
+        const firebaseConfig = {
+            apiKey: "AIzaSyDztGl2rJYRPSWn7NjzDB4pAsILzU_4TiY",
+            authDomain: "cheesso.firebaseapp.com",
+            projectId: "cheesso",
+            storageBucket: "cheesso.firebasestorage.app",
+            messagingSenderId: "628528952065",
+            appId: "1:628528952065:web:02d4bae4acffa57461e100"
+        };
+
+        // Wait for Cheesso to be available
+        setTimeout(() => {
+            // Traditional API
+            console.log('Testing traditional API...');
+            try {
+                window.Cheesso.createAuthButton('#traditional-auth', {
+                    provider: 'firebase',
+                    firebaseConfig: firebaseConfig,
+                    socialProviders: ['google'],
+                    customLabels: {
+                        loginButton: 'Traditional Login',
+                        logout: 'Traditional Logout'
+                    }
+                });
+                console.log('✅ Traditional API works!');
+            } catch (error) {
+                console.error('❌ Traditional API failed:', error);
+            }
+
+            // Chainable API
+            console.log('Testing chainable API...');
+            try {
+                window.Cheesso('#chainable-auth')
+                    .firebase(firebaseConfig)
+                    .google()
+                    .loginText('Chainable Login')
+                    .logoutText('Chainable Logout')
+                    .render();
+                console.log('✅ Chainable API works!');
+            } catch (error) {
+                console.error('❌ Chainable API failed:', error);
+            }
+        }, 200);
+    </script>
+</body>
+</html>

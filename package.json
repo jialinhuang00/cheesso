@@ -1,0 +1,55 @@
+{
+  "name": "cheesso",
+  "version": "1.0.9",
+  "description": "Swiss cheese SSO library - holes that take you anywhere 🧀",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "module": "dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./ui": {
+      "types": "./dist/ui/index.d.ts",
+      "import": "./dist/ui/index.js",
+      "require": "./dist/ui/index.js",
+      "default": "./dist/ui/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "build:ui": "webpack --mode=production",
+    "build:all": "npm run build && npm run build:ui",
+    "dev": "tsc --watch",
+    "dev:ui": "webpack --mode=development --watch",
+    "version:patch": "npm version --no-git-tag-version patch",
+    "prepublishOnly": "npm run build:all"
+  },
+  "keywords": [
+    "sso",
+    "authentication",
+    "firebase",
+    "cross-domain",
+    "cheesso"
+  ],
+  "author": "jialin00",
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0",
+    "webpack": "^5.88.0",
+    "webpack-cli": "^5.1.0",
+    "ts-loader": "^9.4.0"
+  },
+  "dependencies": {
+    "firebase": "^11.10.0"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ]
+}
