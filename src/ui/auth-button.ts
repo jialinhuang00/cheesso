@@ -143,7 +143,7 @@ export class CheessoAuthButton {
   }
 
   private renderLoginButton(): void {
-    const loginText = this.config.customLabels?.loginButton || 'log in';
+    const loginText = this.config.customLabels?.loginButton || 'In';
 
     this.container.innerHTML = `
       <div class="cheesso-auth-container">
@@ -183,7 +183,7 @@ export class CheessoAuthButton {
           <div class="cheesso-user-tooltip-header">
             payload
             <button class="cheesso-logout-btn" id="cheesso-logout-btn">
-              ${this.config.customLabels?.logout || 'logout'}
+              ${this.config.customLabels?.logout || 'out'}
             </button>
           </div>
           <div class="cheesso-user-tooltip-content">${jsonData}</div>
@@ -218,10 +218,35 @@ export class CheessoAuthButton {
   private renderError(): void {
     if (!this.error) return;
 
+    this.showErrorSnackbar(this.error);
+  }
+
+  private showErrorSnackbar(message: string): void {
+    // Remove any existing error snackbar
+    const existingError = document.querySelector('.cheesso-error');
+    if (existingError) {
+      existingError.remove();
+    }
+
+    // Create new error snackbar
     const errorDiv = document.createElement('div');
     errorDiv.className = 'cheesso-error';
-    errorDiv.textContent = this.error;
-    this.container.appendChild(errorDiv);
+    errorDiv.textContent = message;
+
+    // Add to body so it appears as a global snackbar
+    document.body.appendChild(errorDiv);
+
+    // Auto-hide after 4 seconds with fadeout animation
+    setTimeout(() => {
+      errorDiv.classList.add('fadeout');
+
+      // Remove from DOM after animation completes
+      setTimeout(() => {
+        if (errorDiv.parentNode) {
+          errorDiv.remove();
+        }
+      }, 500); // Match the animation duration
+    }, 4000);
   }
 
   private attachLoginEventListeners(): void {

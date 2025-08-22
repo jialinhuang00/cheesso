@@ -36,6 +36,7 @@ export const CHEESSO_STYLES = `
   position: relative;
   transform: rotate(-0.5deg);
   box-shadow: 3px 3px 0px #333;
+  padding: 4px 8px;
 }
 
 .cheesso-auth-button:hover {
@@ -224,9 +225,46 @@ export const CHEESSO_STYLES = `
 }
 
 .cheesso-error {
-  color: #d93025;
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  background: #eb4254;
+  color: white;
+  padding: 8px 12px;
+  border-radius: 6px;
   font-size: 12px;
-  margin-top: 8px;
+  font-weight: 500;
+  box-shadow: 0 3px 8px rgba(235, 66, 84, 0.3);
+  z-index: 10000;
+  max-width: 320px;
+  text-align: left;
+  animation: cheesso-snackbar-enter 0.3s ease-out;
+}
+
+.cheesso-error.fadeout {
+  animation: cheesso-snackbar-exit 0.5s ease-in forwards;
+}
+
+@keyframes cheesso-snackbar-enter {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes cheesso-snackbar-exit {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(100%);
+  }
 }
 
 /* Social provider icons */

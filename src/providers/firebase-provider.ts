@@ -56,8 +56,17 @@ export class FirebaseAuthProvider extends BaseAuthProvider {
       const authProvider = this.createSocialProvider(provider);
       const result = await signInWithPopup(this.auth, authProvider);
       return this.mapFirebaseUser(result.user);
-    } catch (error) {
-      throw new Error(`Firebase ${provider} login failed: ${(error as Error).message}`);
+    } catch (error: any) {
+      // Handle account-exists-with-different-credential error
+      if (error.code === 'auth/account-exists-with-different-credential') {
+        const email = error.customData?.email;
+        if (email) {
+          // Show a more user-friendly error message
+          throw new Error(`Looks like ${email} is already taken by another login method. Try signing in with your original method instead!`);
+        }
+      }
+      
+      throw new Error(`Firebase ${provider} login failed: ${error.message}`);
     }
   }
 
