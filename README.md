@@ -2,6 +2,15 @@
 
 Firebase auth that works across subdomains. Login once, stay logged in everywhere.
 
+## ⚠️ Important Notice
+
+**Read this first!** This library only provides API wrapper. You need to setup your own:
+- Firebase project configuration  
+- OAuth provider credentials (GitHub, Microsoft, Apple, etc.)
+- Domain configuration and certificates
+
+I just make the APIs easier to use - you handle the Firebase setup yourself
+
 **Firebase included for NPM users** - no separate Firebase install needed. CDN users need to load Firebase first.
 
 ## When to use what
