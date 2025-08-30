@@ -47,7 +47,7 @@ export class CrossDomainMessenger {
   setupCrossDomainSync(callback?: (authData: any) => void): () => void {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        console.log('document.visibilityState is true')
+        console.log('Tab became visible, checking auth sync...')
         // Check for auth state changes when tab becomes visible
         const ssoUserData = this.getCrossDomainCookie('cheesso_sso_user');
 
@@ -74,11 +74,40 @@ export class CrossDomainMessenger {
       }
     };
 
+    const handleFocus = () => {
+      console.log('Window focused, checking auth sync...');
+      // Same logic as visibility change
+      const ssoUserData = this.getCrossDomainCookie('cheesso_sso_user');
+
+      if (ssoUserData) {
+        try {
+          const userInfo = JSON.parse(ssoUserData);
+          const authData = {
+            token: null,
+            user: userInfo
+          };
+
+          if (callback) {
+            callback(authData);
+          }
+
+          console.log('Cross-domain auth state synced on focus');
+        } catch (error) {
+          console.warn('Failed to parse SSO user data:', error);
+        }
+      } else if (callback) {
+        // No auth data found, trigger logout sync
+        callback({ token: null, user: null });
+      }
+    };
+
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
 
     // Return cleanup function
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
     };
   }
 

@@ -68,7 +68,14 @@ export class CheessoAuthButton {
   }
 
   private setupAuthListener(): void {
+    // Listen to Firebase auth state changes
     this.cheesso.onAuthStateChanged((state) => {
+      this.currentUser = state.user;
+      this.render();
+    });
+
+    // Also listen to cross-domain auth events
+    this.cheesso.on('auth-changed', (state) => {
       this.currentUser = state.user;
       this.render();
     });
