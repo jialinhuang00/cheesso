@@ -96,13 +96,6 @@ export class CheessoAuthButton {
       }
     }
 
-    console.log('Render decision:', {
-      'authState.loading': authState.loading,
-      'authState.isAuthenticated': authState.isAuthenticated,
-      'authState.user': !!authState.user,
-      'ssoUser': !!ssoUser
-    });
-
     if (authState.loading) {
       console.log('Rendering loading state');
       this.renderLoading();
@@ -303,10 +296,8 @@ export class CheessoAuthButton {
     });
 
     if (userAvatar && authContainer) {
-      console.log('Adding click listener to user avatar');
       // Click avatar to toggle tooltip
       userAvatar.addEventListener('click', (e) => {
-        console.log('Avatar clicked!');
         e.stopPropagation();
         this.toggleTooltip(authContainer, tooltip);
       });
@@ -320,9 +311,7 @@ export class CheessoAuthButton {
     }
 
     if (logoutBtn) {
-      console.log('Adding click listener to logout button');
       logoutBtn.addEventListener('click', (e) => {
-        console.log('Logout button clicked!');
         e.stopPropagation();
         this.handleLogout();
       });
@@ -333,7 +322,6 @@ export class CheessoAuthButton {
     if (authContainer.classList.contains('tooltip-active')) {
       this.hideTooltip(authContainer, tooltip);
     } else {
-      console.log('toggleTooltip click')
       this.showTooltip(authContainer, tooltip);
     }
   }
@@ -353,11 +341,8 @@ export class CheessoAuthButton {
     }
 
     if (!user) {
-      console.log('No user found for tooltip');
       return;
     }
-
-    console.log('Showing tooltip for user:', user);
 
     // Activate fullscreen backdrop
     authContainer.classList.add('tooltip-active');

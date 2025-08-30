@@ -102,13 +102,11 @@ export class Cheesso {
             loading: false
           };
 
-          console.log('SSO auto-login successful with user:', userInfo.email);
           this.currentSSOState = authState; // Store SSO state
           this.emitAuthEvent('auth-changed', authState);
           return true; // SSO was successful
         } catch (parseError) {
           console.error('Failed to parse SSO user data:', parseError);
-          console.log('Clearing corrupted SSO cookie');
           this.crossDomain.clearCrossDomainCookie('cheesso_sso_user');
           return false;
         } finally {
@@ -145,7 +143,7 @@ export class Cheesso {
     } else if (authData.user) {
       // User logged in from another domain
       console.log('Cross-domain login detected, updating local state...');
-      
+
       const loginState = {
         isAuthenticated: true,
         user: {
@@ -156,7 +154,7 @@ export class Cheesso {
         },
         loading: false
       };
-      
+
       this.ssoManagedAuth = true;
       this.currentSSOState = loginState;
       this.emitAuthEvent('auth-changed', loginState);
@@ -178,7 +176,6 @@ export class Cheesso {
 
         // Set cookie with 24 hour expiration
         this.crossDomain.setCrossDomainCookie('cheesso_sso_user', JSON.stringify(userInfo), 86400);
-        console.log('SSO user info cookie set successfully');
       }
     } catch (error) {
       console.warn('Failed to set SSO cookie:', error);
@@ -198,7 +195,6 @@ export class Cheesso {
         // Add rate limiting to prevent infinite clearing
         const now = Date.now();
         if (now - this.lastCookieClearTime > 5000) { // Only clear once per 5 seconds
-          console.log('User logged out, clearing SSO cookie');
           this.crossDomain.clearCrossDomainCookie('cheesso_sso_user');
           this.lastCookieClearTime = now;
         }
@@ -243,10 +239,8 @@ export class Cheesso {
 
   async logout(): Promise<void> {
     try {
-      console.log('Starting logout process...');
 
       // Clear SSO cookie (this will trigger other domains to logout via polling)
-      console.log('Clearing SSO cookie...');
       this.crossDomain.clearCrossDomainCookie('cheesso_sso_user');
 
       // Local logout
@@ -264,7 +258,6 @@ export class Cheesso {
       await this.authProvider.logout();
 
       this.emitAuthEvent('logout-success', null);
-      console.log('Logout process completed');
     } catch (error) {
       console.error('Logout failed:', error);
       this.emitAuthEvent('auth-error', error);
