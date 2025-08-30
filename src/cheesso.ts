@@ -5,7 +5,6 @@ import { CheessoConfig, CheessoUser, CheessoAuthState, SocialProvider } from './
 export class Cheesso {
   private authProvider: BaseAuthProvider;
   private crossDomain: CrossDomainMessenger;
-  private config: CheessoConfig;
   private initialized = false;
 
   private ssoManagedAuth = false;
@@ -15,7 +14,6 @@ export class Cheesso {
       throw new Error('crossDomainCookie is required in CheessoConfig');
     }
 
-    this.config = config;
     this.authProvider = this.createAuthProvider(config);
     this.crossDomain = new CrossDomainMessenger(config.crossDomainCookie);
     // SSO check must happen BEFORE setting up auth state listeners
@@ -26,7 +24,7 @@ export class Cheesso {
         // Don't set up Firebase listeners, SSO will manage everything
       } else {
         console.log('No SSO, using normal Firebase auth state management');
-        this.setupCrossDomainSync();
+        this.setupAuthStateListener();
         // Set up cross-domain sync listener
         this.crossDomain.setupCrossDomainSync((authData) => {
           this.handleCrossDomainAuthSync(authData);
@@ -144,6 +142,24 @@ export class Cheesso {
       this.authProvider.logout().catch(error => {
         console.warn('Firebase Auth logout failed (may already be logged out):', error);
       });
+    } else if (authData.user) {
+      // User logged in from another domain
+      console.log('Cross-domain login detected, updating local state...');
+      
+      const loginState = {
+        isAuthenticated: true,
+        user: {
+          uid: authData.user.uid,
+          email: authData.user.email,
+          displayName: authData.user.displayName,
+          photoURL: authData.user.photoURL
+        },
+        loading: false
+      };
+      
+      this.ssoManagedAuth = true;
+      this.currentSSOState = loginState;
+      this.emitAuthEvent('auth-changed', loginState);
     }
   }
 
@@ -169,8 +185,8 @@ export class Cheesso {
     }
   }
 
-  private setupCrossDomainSync(): void {
-    // Listen for auth state changes and sync across domains
+  private setupAuthStateListener(): void {
+    // Listen for auth state changes and write to cross-domain cookies
     this.authProvider.onAuthStateChanged((state) => {
       // Handle SSO cookie management
       if (state.isAuthenticated && state.user) {

@@ -1,5 +1,5 @@
 // This will be replaced during build with actual commit hash
-const BUILD_COMMIT = 'aae1a9b';
+const BUILD_COMMIT = '0f2ce5b';
 
 export function getVersion(): string {
   // Check if running in Node.js environment
@@ -12,5 +12,5 @@ export function getVersion(): string {
 
 export function logVersion(context: string): void {
   const version = getVersion();
-  console.log(`🧀 Cheesso ${context} v${version}`);
+  console.log(`🧀 Cheesso ${context} ${version}`);
 }

@@ -1,6 +1,6 @@
 {
   "name": "cheesso",
-  "version": "1.0.16",
+  "version": "1.0.17",
   "description": "Swiss cheese SSO library - holes that take you anywhere 🧀",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -26,7 +26,7 @@
     "dev": "tsc --watch",
     "dev:ui": "webpack --mode=development --watch",
     "patch": "npm version --no-git-tag-version patch",
-    "prepublishOnly": "COMMIT=$(git rev-parse --short HEAD) && sed -i '' \"s/const BUILD_COMMIT = 'dev';/const BUILD_COMMIT = '$COMMIT';/\" src/version.ts && npm run build:all"
+    "prepublishOnly": "COMMIT=$(git rev-parse --short HEAD) && sed -i '' \"s/const BUILD_COMMIT = '[^']*';/const BUILD_COMMIT = '$COMMIT';/\" src/version.ts && npm run build:all"
   },
   "keywords": [
     "sso",
