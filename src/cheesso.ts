@@ -11,6 +11,10 @@ export class Cheesso {
   private ssoManagedAuth = false;
 
   constructor(config: CheessoConfig) {
+    if (!config.crossDomainCookie) {
+      throw new Error('crossDomainCookie is required in CheessoConfig');
+    }
+
     this.config = config;
     this.authProvider = this.createAuthProvider(config);
     this.crossDomain = new CrossDomainMessenger(config.crossDomainCookie);
@@ -23,10 +27,11 @@ export class Cheesso {
       } else {
         console.log('No SSO, using normal Firebase auth state management');
         this.setupCrossDomainSync();
+        // Set up cross-domain sync listener
+        this.crossDomain.setupCrossDomainSync((authData) => {
+          this.handleCrossDomainAuthSync(authData);
+        });
       }
-      
-      // Always set up cross-domain logout listener
-      this.setupCrossDomainLogoutListener();
     });
   }
 
@@ -76,8 +81,6 @@ export class Cheesso {
 
         try {
           // Add more debugging
-          console.log('Raw SSO data length:', ssoUserData.length);
-          console.log('Raw SSO data preview:', ssoUserData.substring(0, 100) + '...');
 
           const userInfo = JSON.parse(ssoUserData);
 
@@ -122,39 +125,26 @@ export class Cheesso {
     return false; // No SSO happened
   }
 
-  private setupCrossDomainLogoutListener(): void {
-    // Poll for cookie changes to detect cross-domain logout
-    let lastCookieValue = this.crossDomain.getCrossDomainCookie('cheesso_sso_user');
-    
-    const checkCookieChanges = () => {
-      const currentCookieValue = this.crossDomain.getCrossDomainCookie('cheesso_sso_user');
-      
-      // If cookie was cleared from another domain
-      if (lastCookieValue && !currentCookieValue) {
-        console.log('SSO cookie was cleared from another domain, performing Firebase logout...');
-        
-        // Update our local state
-        if (this.ssoManagedAuth && this.currentSSOState?.isAuthenticated) {
-          const loggedOutState = {
-            isAuthenticated: false,
-            user: null,
-            loading: false
-          };
-          this.currentSSOState = loggedOutState;
-          this.emitAuthEvent('auth-changed', loggedOutState);
-        }
-        
-        // Ensure Firebase logout
-        this.authProvider.logout().catch(error => {
-          console.warn('Firebase Auth logout failed (may already be logged out):', error);
-        });
+  private handleCrossDomainAuthSync(authData: any): void {
+    // Handle cross-domain auth state sync from visibility change
+    if (!authData.token && !authData.user) {
+      // User logged out from another domain
+      console.log('Cross-domain logout detected, performing local logout...');
+
+      if (this.ssoManagedAuth && this.currentSSOState?.isAuthenticated) {
+        const loggedOutState = {
+          isAuthenticated: false,
+          user: null,
+          loading: false
+        };
+        this.currentSSOState = loggedOutState;
+        this.emitAuthEvent('auth-changed', loggedOutState);
       }
-      
-      lastCookieValue = currentCookieValue;
-    };
-    
-    // Check every 1 second for cookie changes
-    setInterval(checkCookieChanges, 1000);
+
+      this.authProvider.logout().catch(error => {
+        console.warn('Firebase Auth logout failed (may already be logged out):', error);
+      });
+    }
   }
 
   private async setSSOCookie(): Promise<void> {
@@ -238,11 +228,11 @@ export class Cheesso {
   async logout(): Promise<void> {
     try {
       console.log('Starting logout process...');
-      
+
       // Clear SSO cookie (this will trigger other domains to logout via polling)
       console.log('Clearing SSO cookie...');
       this.crossDomain.clearCrossDomainCookie('cheesso_sso_user');
-      
+
       // Local logout
       if (this.ssoManagedAuth) {
         const loggedOutState = {
@@ -253,10 +243,10 @@ export class Cheesso {
         this.currentSSOState = loggedOutState;
         this.emitAuthEvent('auth-changed', loggedOutState);
       }
-      
+
       // Firebase logout
       await this.authProvider.logout();
-      
+
       this.emitAuthEvent('logout-success', null);
       console.log('Logout process completed');
     } catch (error) {

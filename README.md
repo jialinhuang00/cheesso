@@ -31,20 +31,19 @@ Cheesso('#auth-button')
   .render();
 ```
 
-**Need programmatic control?** Initialize first:
+**Need programmatic control?** Use the Cheesso class directly:
 ```javascript
 // For custom auth logic, hooks, or multiple components
-import { initCheesso, getCheesso, loginWithSocial } from 'cheesso';
+import { Cheesso } from 'cheesso';
 
-initCheesso({
+const cheesso = new Cheesso({
   provider: 'firebase',
   firebaseConfig: { /* ... */ },
-  socialProviders: ['google']
+  crossDomainCookie: '.yourdomain.com'
 });
 
-// Now use anywhere in your app
-const cheesso = getCheesso();
-await loginWithSocial('google');
+await cheesso.initialize();
+await cheesso.loginWithSocial('google');
 ```
 
 ## Installation
@@ -105,8 +104,9 @@ function AuthButton() {
 
 - Uses cookies to share auth state across `*.yourdomain.com`
 - Login on `app1.example.com` → auto-login on `app2.example.com`
-- Logout anywhere → logout everywhere
+- Logout anywhere → logout everywhere via `visibilityChange` events
 - **Only works for same-site subdomains** (not different domains)
+- Automatic sync when switching between tabs/domains
 
 ## Supported scenarios
 
@@ -129,7 +129,7 @@ Cheesso('#container')
 
 **Programmatic API:**
 ```javascript
-initCheesso({
+new Cheesso({
   provider: 'firebase',
   firebaseConfig: { /* ... */ },
   crossDomainCookie: '.example.com'
