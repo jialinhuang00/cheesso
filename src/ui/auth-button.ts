@@ -341,6 +341,7 @@ export class CheessoAuthButton {
     }
 
     if (!user) {
+      console.log('No user found for tooltip');
       return;
     }
 

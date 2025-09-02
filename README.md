@@ -153,6 +153,76 @@ Cheesso('#container')
   .render();
 ```
 
+## Google Identity Services (GIS) Integration
+
+Cheesso supports Google Identity Services for popup-free authentication experience, similar to Medium's login flow.
+
+### Setup GIS Authentication
+
+**1. Load GIS Script:**
+```html
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+```
+
+**2. Configure OAuth Client:**
+- Go to [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
+- **Important**: Select your Firebase project from the project dropdown (top-left)
+- Find your OAuth 2.0 Client ID (should match your Firebase project)
+- Edit the client and add your domains to **Authorized JavaScript origins**:
+  ```
+  https://yourdomain.com
+  https://www.yourdomain.com
+  http://localhost:3000  # For development
+  ```
+- **Note**: Wildcards (*.domain.com) are NOT supported
+
+**3. Use GIS with Cheesso:**
+```javascript
+import { Cheesso } from 'cheesso';
+
+const cheesso = new Cheesso({
+  provider: 'firebase',
+  firebaseConfig: { /* your config */ },
+  crossDomainCookie: '.yourdomain.com'
+});
+
+await cheesso.initialize();
+
+// Setup GIS auto-prompt
+if (window.google) {
+  window.google.accounts.id.initialize({
+    client_id: "YOUR-FIREBASE-WEB-CLIENT-ID.apps.googleusercontent.com",
+    callback: async (response) => {
+      await cheesso.loginWithGIS(response.credential);
+    }
+  });
+  
+  // Auto-show login prompt (no popup blocker)
+  window.google.accounts.id.prompt();
+}
+```
+
+### Finding Your Web Client ID
+
+Your Firebase project automatically creates a web OAuth client. The format is:
+```
+PROJECT-NUMBER-randomstring.apps.googleusercontent.com
+```
+
+**Troubleshooting:**
+- **"Origin not allowed"**: Add your domain to Authorized JavaScript origins
+- **"Project not found"**: Make sure you selected the correct Firebase project in Google Cloud Console
+- **Can't find client ID**: Look for "OAuth 2.0 Client IDs" section in GCP Credentials
+
+### GIS vs Firebase Popup
+
+| Method | User Experience | Popup Blocker | Setup Complexity |
+|--------|-----------------|---------------|------------------|
+| Firebase `signInWithPopup` | Requires user click | Can be blocked | Simple |
+| Google Identity Services | Auto-prompt, like Medium | Never blocked | Requires OAuth setup |
+
+Both methods write to the same Firebase Auth instance and support cross-domain sync.
+
 ## License
 
 MIT

@@ -4,6 +4,7 @@ import {
   Auth,
   signInWithPopup,
   signInWithCustomToken,
+  signInWithCredential,
   GoogleAuthProvider,
   OAuthProvider,
   signOut,
@@ -125,6 +126,16 @@ export class FirebaseAuthProvider extends BaseAuthProvider {
       return this.mapFirebaseUser(userCredential.user);
     } catch (error) {
       throw new Error(`Firebase token sign-in failed: ${(error as Error).message}`);
+    }
+  }
+
+  async loginWithGISCredential(idToken: string): Promise<CheessoUser> {
+    try {
+      const credential = GoogleAuthProvider.credential(idToken);
+      const result = await signInWithCredential(this.auth, credential);
+      return this.mapFirebaseUser(result.user);
+    } catch (error) {
+      throw new Error(`GIS credential login failed: ${(error as Error).message}`);
     }
   }
 

@@ -237,6 +237,21 @@ export class Cheesso {
     }
   }
 
+  async loginWithGIS(idToken: string): Promise<CheessoUser> {
+    try {
+      if (this.authProvider instanceof FirebaseAuthProvider || this.authProvider instanceof FirebaseCompatAuthProvider) {
+        const user = await (this.authProvider as any).loginWithGISCredential(idToken);
+        this.emitAuthEvent('login-success', user);
+        return user;
+      } else {
+        throw new Error('GIS login only supported with Firebase provider');
+      }
+    } catch (error) {
+      this.emitAuthEvent('auth-error', error);
+      throw error;
+    }
+  }
+
   async logout(): Promise<void> {
     try {
 
