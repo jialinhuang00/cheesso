@@ -116,8 +116,6 @@ function AuthButton() {
 
 ## Cross-domain configuration
 
-By default, cookies are set for `.jialin00.com`. To use your own domain:
-
 **Chainable API:**
 ```javascript
 Cheesso('#container')
@@ -193,8 +191,8 @@ const authButton = new CheessoAuthButton({
 // Get underlying Cheesso instance for GIS
 const cheesso = authButton.getCheesso();
 
-// Setup GIS auto-prompt
-if (window.google) {
+// Setup GIS auto-prompt (only if not authenticated)
+if (window.google && !cheesso.isAuthenticated()) {
   window.google.accounts.id.initialize({
     client_id: "YOUR-FIREBASE-WEB-CLIENT-ID.apps.googleusercontent.com",
     callback: async (response) => {
@@ -219,8 +217,8 @@ const cheesso = new Cheesso({
 
 await cheesso.initialize();
 
-// Setup GIS auto-prompt
-if (window.google) {
+// Setup GIS auto-prompt (only if not authenticated)
+if (window.google && !cheesso.isAuthenticated()) {
   window.google.accounts.id.initialize({
     client_id: "YOUR-FIREBASE-WEB-CLIENT-ID.apps.googleusercontent.com",
     callback: async (response) => {

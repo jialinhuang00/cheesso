@@ -46,6 +46,8 @@ export interface GoogleIdentityServices {
       initialize: (config: {
         client_id: string;
         callback: (response: { credential: string }) => void;
+        cancel_on_tap_outside?: boolean;
+        auto_select?: boolean;
       }) => void;
       prompt: () => void;
     };
