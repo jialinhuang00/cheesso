@@ -241,6 +241,7 @@ PROJECT-NUMBER-randomstring.apps.googleusercontent.com
 - **"Origin not allowed"**: Add your domain to Authorized JavaScript origins
 - **"Project not found"**: Make sure you selected the correct Firebase project in Google Cloud Console
 - **Can't find client ID**: Look for "OAuth 2.0 Client IDs" section in GCP Credentials
+- **Prompt not showing after dismiss**: GIS has a cooldown mechanism - if user clicks "X" to close the prompt, it won't auto-show again for a period. Clear Google cookies or use incognito mode to reset, or provide a manual login button as fallback
 
 ### GIS vs Firebase Popup
 
