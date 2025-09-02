@@ -131,10 +131,12 @@ export class FirebaseAuthProvider extends BaseAuthProvider {
 
   async loginWithGISCredential(idToken: string): Promise<CheessoUser> {
     try {
-      const credential = GoogleAuthProvider.credential(idToken);
+      // GIS returns JWT ID token, use it directly with GoogleAuthProvider
+      const credential = GoogleAuthProvider.credential(idToken, null);
       const result = await signInWithCredential(this.auth, credential);
       return this.mapFirebaseUser(result.user);
     } catch (error) {
+      console.error('GIS credential details:', { idToken, error });
       throw new Error(`GIS credential login failed: ${(error as Error).message}`);
     }
   }

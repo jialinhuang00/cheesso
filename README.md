@@ -177,6 +177,37 @@ Cheesso supports Google Identity Services for popup-free authentication experien
 - **Note**: Wildcards (*.domain.com) are NOT supported
 
 **3. Use GIS with Cheesso:**
+
+**Option A: With UI Button + GIS Auto-prompt**
+```javascript
+import { CheessoAuthButton } from 'cheesso/ui';
+
+const authButton = new CheessoAuthButton({
+  container: '#auth-button',
+  provider: 'firebase',
+  firebaseConfig: { /* your config */ },
+  crossDomainCookie: '.yourdomain.com',
+  socialProviders: ['google', 'github']
+});
+
+// Get underlying Cheesso instance for GIS
+const cheesso = authButton.getCheesso();
+
+// Setup GIS auto-prompt
+if (window.google) {
+  window.google.accounts.id.initialize({
+    client_id: "YOUR-FIREBASE-WEB-CLIENT-ID.apps.googleusercontent.com",
+    callback: async (response) => {
+      await cheesso.loginWithGIS(response.credential);
+    }
+  });
+  
+  // Auto-show login prompt (no popup blocker)
+  window.google.accounts.id.prompt();
+}
+```
+
+**Option B: Programmatic Only**
 ```javascript
 import { Cheesso } from 'cheesso';
 
@@ -197,7 +228,6 @@ if (window.google) {
     }
   });
   
-  // Auto-show login prompt (no popup blocker)
   window.google.accounts.id.prompt();
 }
 ```
