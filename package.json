@@ -1,6 +1,6 @@
 {
   "name": "cheesso",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Swiss cheese SSO library - holes that take you anywhere 🧀",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
