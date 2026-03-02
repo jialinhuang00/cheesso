@@ -5,7 +5,7 @@ export interface CheessoUser {
   photoURL: string | null;
 }
 
-export type AuthProvider = 'firebase' | 'cognito';
+export type AuthProvider = 'firebase';
 
 export type SocialProvider = 'google' | 'apple' | 'microsoft' | 'facebook' | 'github';
 
@@ -18,18 +18,9 @@ export interface FirebaseConfig {
   appId: string;
 }
 
-export interface CognitoConfig {
-  userPoolId: string;
-  userPoolWebClientId: string;
-  region: string;
-  identityPoolId?: string; // For AWS credentials
-  domain?: string; // For hosted UI
-}
-
 export interface CheessoConfig {
   provider: AuthProvider;
   firebaseConfig?: FirebaseConfig;
-  cognitoConfig?: CognitoConfig;
   socialProviders?: SocialProvider[];
   crossDomainCookie?: string; // Domain for SSO cookies (e.g., '.example.com')
 }

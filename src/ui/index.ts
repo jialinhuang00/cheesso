@@ -6,11 +6,9 @@ import { getVersion } from '../version';
 
 // Global API interface
 export interface CheessoGlobalAPI {
-  destroyAll(): void;
   injectStyles(): void;
   removeStyles(): void;
   version: string;
-  // Chainable API - can be called as Cheesso(container) or window.Cheesso(container)
   (container: string | HTMLElement): CheessoBuilder;
 }
 
@@ -22,15 +20,9 @@ function createCheessoAPI(container?: string | HTMLElement): CheessoBuilder {
   return new CheessoBuilder(container);
 }
 
-// Create the global API object
 const CheessoAPIObject = {
-  destroyAll(): void {
-    removeStyles();
-  },
-
   injectStyles,
   removeStyles,
-
   version: getVersion()
 };
 

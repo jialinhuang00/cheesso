@@ -19,6 +19,7 @@ export class CheessoAuthButton {
   private dropdownOpen = false;
   private currentUser: CheessoUser | null = null;
   private error: string | null = null;
+  private cleanupFns: (() => void)[] = [];
 
   constructor(config: CheessoUIConfig) {
     this.config = config;
@@ -82,53 +83,23 @@ export class CheessoAuthButton {
   }
 
   private render(): void {
-    const authState = this.cheesso.getAuthState();
+    this.cleanupListeners();
 
-    // Check for SSO user in cookie directly
-    const ssoCookie = this.getCrossDomainCookie('cheesso_sso_user');
-    let ssoUser = null;
-    if (ssoCookie) {
-      try {
-        ssoUser = JSON.parse(ssoCookie);
-        console.log('SSO user found in cookie: ', ssoUser);
-      } catch (error) {
-        console.warn('Failed to parse SSO cookie:', error);
-      }
-    }
+    const authState = this.cheesso.getAuthState();
+    const ssoUser = this.cheesso.getSSOUser();
 
     if (authState.loading) {
-      console.log('Rendering loading state');
       this.renderLoading();
     } else if (authState.isAuthenticated && authState.user) {
-      console.log('Rendering user info (normal auth)');
       this.renderUserInfo();
     } else if (ssoUser) {
-      console.log('Rendering user info (SSO)');
-      // Use SSO user info
       this.renderUserInfo(ssoUser);
     } else {
-      console.log('Rendering login button');
       this.renderLoginButton();
     }
 
     if (this.error) {
       this.renderError();
-    }
-  }
-
-  private getCrossDomainCookie(key: string): string | null {
-    try {
-      const cookies = document.cookie.split(';');
-      for (const cookie of cookies) {
-        const [cookieKey, cookieValue] = cookie.trim().split('=');
-        if (cookieKey === key) {
-          return decodeURIComponent(cookieValue);
-        }
-      }
-      return null;
-    } catch (error) {
-      console.warn('Failed to get cross-domain cookie:', error);
-      return null;
     }
   }
 
@@ -249,37 +220,47 @@ export class CheessoAuthButton {
     }, 4000);
   }
 
+  private cleanupListeners(): void {
+    this.cleanupFns.forEach(fn => fn());
+    this.cleanupFns = [];
+  }
+
+  private addListener(target: EventTarget, event: string, handler: EventListener): void {
+    target.addEventListener(event, handler);
+    this.cleanupFns.push(() => target.removeEventListener(event, handler));
+  }
+
   private attachLoginEventListeners(): void {
     const loginBtn = this.container.querySelector('#cheesso-login-btn') as HTMLButtonElement;
     const dropdown = this.container.querySelector('#cheesso-dropdown') as HTMLElement;
     const socialButtons = this.container.querySelectorAll('.cheesso-social-button') as NodeListOf<HTMLButtonElement>;
 
     if (loginBtn && dropdown) {
-      loginBtn.addEventListener('click', (e) => {
+      this.addListener(loginBtn, 'click', (e) => {
         e.stopPropagation();
         this.toggleDropdown();
       });
 
       if (this.config.showDropdownOnHover) {
-        loginBtn.addEventListener('mouseenter', () => this.openDropdown());
-        this.container.addEventListener('mouseleave', () => this.closeDropdown());
+        this.addListener(loginBtn, 'mouseenter', () => this.openDropdown());
+        this.addListener(this.container, 'mouseleave', () => this.closeDropdown());
       }
     }
 
     socialButtons.forEach(button => {
-      button.addEventListener('click', (e) => {
+      this.addListener(button, 'click', (e) => {
         e.stopPropagation();
         const provider = button.getAttribute('data-provider') as SocialProvider;
         this.handleSocialLogin(provider);
       });
     });
 
-    // Close dropdown when clicking outside
-    document.addEventListener('click', (e) => {
+    const outsideClickHandler = (e: Event) => {
       if (!this.container.contains(e.target as Node)) {
         this.closeDropdown();
       }
-    });
+    };
+    this.addListener(document, 'click', outsideClickHandler);
   }
 
   private attachUserEventListeners(): void {
@@ -288,22 +269,13 @@ export class CheessoAuthButton {
     const logoutBtn = this.container.querySelector('#cheesso-logout-btn') as HTMLButtonElement;
     const tooltip = this.container.querySelector('#cheesso-user-tooltip') as HTMLElement;
 
-    console.log('attachUserEventListeners - elements found:', {
-      authContainer: !!authContainer,
-      userAvatar: !!userAvatar,
-      logoutBtn: !!logoutBtn,
-      tooltip: !!tooltip
-    });
-
     if (userAvatar && authContainer) {
-      // Click avatar to toggle tooltip
-      userAvatar.addEventListener('click', (e) => {
+      this.addListener(userAvatar, 'click', (e) => {
         e.stopPropagation();
         this.toggleTooltip(authContainer, tooltip);
       });
 
-      // Click backdrop to close tooltip
-      authContainer.addEventListener('click', (e) => {
+      this.addListener(authContainer, 'click', (e) => {
         if (e.target === authContainer) {
           this.hideTooltip(authContainer, tooltip);
         }
@@ -311,7 +283,7 @@ export class CheessoAuthButton {
     }
 
     if (logoutBtn) {
-      logoutBtn.addEventListener('click', (e) => {
+      this.addListener(logoutBtn, 'click', (e) => {
         e.stopPropagation();
         this.handleLogout();
       });
@@ -327,28 +299,10 @@ export class CheessoAuthButton {
   }
 
   private showTooltip(authContainer: HTMLElement, tooltip: HTMLElement): void {
-    // Check for SSO user if no current user
-    let user = this.currentUser;
-    if (!user) {
-      const ssoCookie = this.getCrossDomainCookie('cheesso_sso_user');
-      if (ssoCookie) {
-        try {
-          user = JSON.parse(ssoCookie);
-        } catch (error) {
-          console.warn('Failed to parse SSO cookie in showTooltip:', error);
-        }
-      }
-    }
+    const user = this.currentUser || this.cheesso.getSSOUser();
+    if (!user) return;
 
-    if (!user) {
-      console.log('No user found for tooltip');
-      return;
-    }
-
-    // Activate fullscreen backdrop
     authContainer.classList.add('tooltip-active');
-
-    // Show tooltip
     tooltip.classList.add('show');
   }
 
@@ -376,27 +330,12 @@ export class CheessoAuthButton {
   private async handleLogout(): Promise<void> {
     try {
       this.error = null;
-      this.render();
-
-      // Clear SSO cookie directly
-      this.clearCrossDomainCookie('cheesso_sso_user');
-
       await this.cheesso.logout();
-
-      // Force re-render after logout
-      setTimeout(() => this.render(), 100);
+      this.currentUser = null;
+      this.render();
     } catch (error) {
       this.error = error instanceof Error ? error.message : 'log out failed';
       this.render();
-    }
-  }
-
-  private clearCrossDomainCookie(key: string): void {
-    try {
-      document.cookie = `${key}=; domain=${this.config.crossDomainCookie}; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-      console.log(`Cross-domain cookie cleared: ${key}`);
-    } catch (error) {
-      console.warn('Failed to clear cross-domain cookie:', error);
     }
   }
 
@@ -483,12 +422,9 @@ export class CheessoAuthButton {
   }
 
   public destroy(): void {
+    this.cleanupListeners();
     this.cheesso.destroy();
     this.container.innerHTML = '';
   }
 
-  public updateConfig(newConfig: Partial<CheessoUIConfig>): void {
-    this.config = { ...this.config, ...newConfig };
-    this.render();
-  }
 }

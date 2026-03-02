@@ -1,9 +1,9 @@
-import { BaseAuthProvider, FirebaseAuthProvider, FirebaseCompatAuthProvider, CognitoAuthProvider } from './providers';
+import { FirebaseAuthProvider } from './providers';
 import { CrossDomainMessenger } from './cross-domain';
 import { CheessoConfig, CheessoUser, CheessoAuthState, SocialProvider } from './types';
 
 export class Cheesso {
-  private authProvider: BaseAuthProvider;
+  private authProvider: FirebaseAuthProvider;
   private crossDomain: CrossDomainMessenger;
   private initialized = false;
 
@@ -19,11 +19,11 @@ export class Cheesso {
     // SSO check must happen BEFORE setting up auth state listeners
     this.checkSSOAutoLogin().then((ssoSuccess) => {
       if (ssoSuccess) {
-        console.log('SSO successful, will not use Firebase auth state management');
+        // console.log('SSO successful, will not use Firebase auth state management');
         this.ssoManagedAuth = true;
         // Don't set up Firebase listeners, SSO will manage everything
       } else {
-        console.log('No SSO, using normal Firebase auth state management');
+        // console.log('No SSO, using normal Firebase auth state management');
         this.setupAuthStateListener();
         // Set up cross-domain sync listener
         this.crossDomain.setupCrossDomainSync((authData) => {
@@ -33,30 +33,11 @@ export class Cheesso {
     });
   }
 
-  private createAuthProvider(config: CheessoConfig): BaseAuthProvider {
-    switch (config.provider) {
-      case 'firebase':
-        if (!config.firebaseConfig) {
-          throw new Error('Firebase config is required when using Firebase provider');
-        }
-
-        // Check if we're in browser environment with compat SDK
-        if (typeof window !== 'undefined' && (window as any).firebase) {
-          return new FirebaseCompatAuthProvider(config.firebaseConfig);
-        } else {
-          // Use modern Firebase SDK for Node.js or ES modules
-          return new FirebaseAuthProvider(config.firebaseConfig);
-        }
-
-      case 'cognito':
-        if (!config.cognitoConfig) {
-          throw new Error('Cognito config is required when using Cognito provider');
-        }
-        return new CognitoAuthProvider(config.cognitoConfig);
-
-      default:
-        throw new Error(`Unsupported auth provider: ${config.provider}`);
+  private createAuthProvider(config: CheessoConfig): FirebaseAuthProvider {
+    if (!config.firebaseConfig) {
+      throw new Error('Firebase config is required');
     }
+    return new FirebaseAuthProvider(config.firebaseConfig);
   }
 
   private ssoLoginInProgress = false;
@@ -67,14 +48,14 @@ export class Cheesso {
       // Check if already authenticated
       const currentState = this.authProvider.getAuthState();
       if (currentState.isAuthenticated) {
-        console.log('Already authenticated, skipping SSO check');
+        // console.log('Already authenticated, skipping SSO check');
         return false;
       }
 
       // Check for SSO user info in cookie
       const ssoUserData = this.crossDomain.getCrossDomainCookie('cheesso_sso_user');
       if (ssoUserData) {
-        console.log('SSO user data found in cookie');
+        // console.log('SSO user data found in cookie');
         this.ssoLoginInProgress = true;
 
         try {
@@ -85,7 +66,7 @@ export class Cheesso {
           // Check if data is not too old (24 hours)
           const now = Date.now();
           if (userInfo.timestamp && (now - userInfo.timestamp) > 86400000) {
-            console.log('SSO user data has expired');
+            // console.log('SSO user data has expired');
             this.crossDomain.clearCrossDomainCookie('cheesso_sso_user');
             return false;
           }
@@ -125,7 +106,7 @@ export class Cheesso {
     // Handle cross-domain auth state sync from visibility change
     if (!authData.token && !authData.user) {
       // User logged out from another domain
-      console.log('Cross-domain logout detected, performing local logout...');
+      // console.log('Cross-domain logout detected, performing local logout...');
 
       if (this.ssoManagedAuth && this.currentSSOState?.isAuthenticated) {
         const loggedOutState = {
@@ -142,7 +123,7 @@ export class Cheesso {
       });
     } else if (authData.user) {
       // User logged in from another domain
-      console.log('Cross-domain login detected, updating local state...');
+      // console.log('Cross-domain login detected, updating local state...');
 
       const loginState = {
         isAuthenticated: true,
@@ -187,7 +168,7 @@ export class Cheesso {
     this.authProvider.onAuthStateChanged((state) => {
       // Handle SSO cookie management
       if (state.isAuthenticated && state.user) {
-        console.log('state.isAuthenticated && state.user', state.isAuthenticated, state.user)
+        // console.log('state.isAuthenticated && state.user', state.isAuthenticated, state.user)
         // Set SSO cookie for cross-domain access
         this.setSSOCookie();
       } else if (!this.ssoLoginInProgress) {
@@ -239,13 +220,9 @@ export class Cheesso {
 
   async loginWithGIS(idToken: string): Promise<CheessoUser> {
     try {
-      if (this.authProvider instanceof FirebaseAuthProvider || this.authProvider instanceof FirebaseCompatAuthProvider) {
-        const user = await (this.authProvider as any).loginWithGISCredential(idToken);
-        this.emitAuthEvent('login-success', user);
-        return user;
-      } else {
-        throw new Error('GIS login only supported with Firebase provider');
-      }
+      const user = await this.authProvider.loginWithGISCredential(idToken);
+      this.emitAuthEvent('login-success', user);
+      return user;
     } catch (error) {
       this.emitAuthEvent('auth-error', error);
       throw error;
@@ -290,7 +267,30 @@ export class Cheesso {
   }
 
   getUser(): CheessoUser | null {
+    if (this.ssoManagedAuth && this.currentSSOState?.user) {
+      return this.currentSSOState.user;
+    }
     return this.authProvider.getUser();
+  }
+
+  getSSOUser(): CheessoUser | null {
+    const ssoData = this.crossDomain.getCrossDomainCookie('cheesso_sso_user');
+    if (!ssoData) return null;
+    try {
+      const parsed = JSON.parse(ssoData);
+      return {
+        uid: parsed.uid,
+        email: parsed.email,
+        displayName: parsed.displayName,
+        photoURL: parsed.photoURL
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  clearSSOCookie(): void {
+    this.crossDomain.clearCrossDomainCookie('cheesso_sso_user');
   }
 
   getAuthState(): CheessoAuthState {

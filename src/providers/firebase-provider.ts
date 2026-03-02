@@ -1,9 +1,8 @@
-import { initializeApp, FirebaseApp } from 'firebase/app';
+import { initializeApp, getApp, FirebaseApp } from 'firebase/app';
 import {
   getAuth,
   Auth,
   signInWithPopup,
-  signInWithCustomToken,
   signInWithCredential,
   GoogleAuthProvider,
   OAuthProvider,
@@ -22,7 +21,11 @@ export class FirebaseAuthProvider extends BaseAuthProvider {
 
   constructor(private config: FirebaseConfig) {
     super();
-    this.app = initializeApp(config);
+    try {
+      this.app = getApp('cheesso');
+    } catch {
+      this.app = initializeApp(config, 'cheesso');
+    }
     this.auth = getAuth(this.app);
   }
 
@@ -106,29 +109,6 @@ export class FirebaseAuthProvider extends BaseAuthProvider {
     }
   }
 
-  // SSO methods for cross-domain authentication
-  async getIdToken(): Promise<string | null> {
-    try {
-      const user = this.auth.currentUser;
-      if (user) {
-        return await user.getIdToken();
-      }
-      return null;
-    } catch (error) {
-      console.warn('Failed to get Firebase ID token:', error);
-      return null;
-    }
-  }
-
-  async signInWithToken(token: string): Promise<CheessoUser> {
-    try {
-      const userCredential = await signInWithCustomToken(this.auth, token);
-      return this.mapFirebaseUser(userCredential.user);
-    } catch (error) {
-      throw new Error(`Firebase token sign-in failed: ${(error as Error).message}`);
-    }
-  }
-
   async loginWithGISCredential(idToken: string): Promise<CheessoUser> {
     try {
       // GIS returns JWT ID token, use it directly with GoogleAuthProvider
@@ -136,7 +116,6 @@ export class FirebaseAuthProvider extends BaseAuthProvider {
       const result = await signInWithCredential(this.auth, credential);
       return this.mapFirebaseUser(result.user);
     } catch (error) {
-      console.error('GIS credential details:', { idToken, error });
       throw new Error(`GIS credential login failed: ${(error as Error).message}`);
     }
   }

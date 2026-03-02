@@ -1,5 +1,5 @@
 import { CheessoAuthButton, CheessoUIConfig } from './auth-button';
-import { FirebaseConfig, CognitoConfig, SocialProvider } from '../types';
+import { FirebaseConfig, SocialProvider } from '../types';
 import { logVersion } from '../version';
 
 export class CheessoBuilder {
@@ -13,12 +13,6 @@ export class CheessoBuilder {
   firebase(config: FirebaseConfig): CheessoBuilder {
     this.config.provider = 'firebase';
     this.config.firebaseConfig = config;
-    return this;
-  }
-
-  cognito(config: CognitoConfig): CheessoBuilder {
-    this.config.provider = 'cognito';
-    this.config.cognitoConfig = config;
     return this;
   }
 
@@ -92,7 +86,7 @@ export class CheessoBuilder {
     logVersion('UI Builder');
     
     if (!this.config.provider) {
-      throw new Error('Provider is required. Use .firebase() or .cognito() first.');
+      throw new Error('Provider is required. Use .firebase() first.');
     }
 
     const finalConfig: CheessoUIConfig = {
@@ -101,10 +95,5 @@ export class CheessoBuilder {
     } as CheessoUIConfig;
 
     return new CheessoAuthButton(finalConfig);
-  }
-
-  // Alias for render
-  create(): CheessoAuthButton {
-    return this.render();
   }
 }
