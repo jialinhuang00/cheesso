@@ -1,89 +1,82 @@
-# 🧀 Cheesso
+# Cheesso
 
-Firebase auth that works across subdomains. Login once, stay logged in everywhere.
+Swiss cheese has holes. Your subdomains have walls. Cheesso punches through them.
 
-## ⚠️ Important Notice
+Cross-subdomain SSO for Firebase. Login on `app.example.com`, stay logged in on `blog.example.com`.
 
-**Read this first!** This library only provides API wrapper. You need to setup your own:
-- Firebase project configuration  
-- OAuth provider credentials (GitHub, Microsoft, Apple, etc.)
-- Domain configuration and certificates
+## How it works
 
-I just make the APIs easier to use - you handle the Firebase setup yourself
+A shared cookie on `.example.com` carries auth state across subdomains. Tab switches trigger `visibilitychange` to sync. No server required.
 
-**Firebase included for NPM users** - no separate Firebase install needed. CDN users need to load Firebase first.
+```
+app.example.com logs in → cookie set on .example.com → blog.example.com reads cookie → synced
+```
 
-## When to use what
+Only same-site subdomains. `example.com` and `other.com` will not work.
 
-**Just want a login button?** Use the chainable API:
-```javascript
-// Simple drop-in auth button with cross-subdomain sync
+## Install
+
+```bash
+npm install cheesso
+```
+
+## Quick start
+
+### Drop-in button (chainable API)
+
+```ts
+import Cheesso from 'cheesso/ui';
+
 Cheesso('#auth-button')
-  .firebase({
-    apiKey: "your-api-key",
-    authDomain: "your-domain.firebaseapp.com",
-    projectId: "your-project",
-    storageBucket: "your-bucket.firebasestorage.app",
-    messagingSenderId: "123456789",
-    appId: "your-app-id"
-  })
+  .firebase({ apiKey: "...", authDomain: "...", projectId: "..." })
+  .crossDomain('.example.com')
   .google()
   .render();
 ```
 
-**Need programmatic control?** Use the Cheesso class directly:
-```javascript
-// For custom auth logic, hooks, or multiple components
+### Programmatic
+
+```ts
 import { Cheesso } from 'cheesso';
 
 const cheesso = new Cheesso({
-  provider: 'firebase',
-  firebaseConfig: { /* ... */ },
-  crossDomainCookie: '.yourdomain.com'
+  firebaseConfig: { apiKey: "...", authDomain: "...", projectId: "..." },
+  crossDomainCookie: '.example.com'
 });
 
 await cheesso.initialize();
 await cheesso.loginWithSocial('google');
 ```
 
-## Installation
+## API
 
-**NPM/Yarn:**
-```bash
-npm install cheesso
-# or
-yarn add cheesso
+| Method | Does |
+|---|---|
+| `loginWithSocial(provider)` | Firebase popup login. `'google'`, `'github'`, `'microsoft'`, `'apple'`, `'facebook'` |
+| `loginWithGIS(idToken)` | Login with Google Identity Services credential |
+| `logout()` | Clears cookie and Firebase session |
+| `isAuthenticated()` | Returns `boolean` |
+| `getUser()` | Returns `{ uid, email, displayName, photoURL }` or `null` |
+| `on(event, callback)` | Listen to `'auth-changed'`, `'login-success'`, `'logout-success'`, `'auth-error'` |
+
+## Chainable API
+
+```ts
+Cheesso('#container')
+  .firebase(config)
+  .crossDomain('.example.com')
+  .google()
+  .github()
+  .microsoft()
+  .apple()
+  .facebook()
+  .loginText('Sign In')
+  .logoutText('Sign Out')
+  .hoverDropdown(true)
+  .render();
 ```
 
-**CDN (Browser):**
-```html
-<!-- 1. Load Firebase first (required) -->
-<script src="https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js"></script>
-
-<!-- 2. Load Cheesso -->
-<script src="https://cdn.jsdelivr.net/npm/cheesso@latest/dist/cheesso-complete.js"></script>
-
-<!-- 3. Use the chainable API -->
-<script>
-  window.Cheesso('#auth-button')
-    .firebase({
-      apiKey: "your-api-key",
-      authDomain: "your-domain.firebaseapp.com",
-      projectId: "your-project",
-      storageBucket: "your-bucket.firebasestorage.app",
-      messagingSenderId: "123456789",
-      appId: "your-app-id"
-    })
-    .google()
-    .render();
-</script>
-
-<!-- 4. Add the container -->
-<div id="auth-button"></div>
-```
-
-## React Example
+## React
 
 ```tsx
 import Cheesso from 'cheesso/ui';
@@ -91,7 +84,8 @@ import Cheesso from 'cheesso/ui';
 function AuthButton() {
   useEffect(() => {
     Cheesso('#auth-button')
-      .firebase({ /* config */ })
+      .firebase(config)
+      .crossDomain('.example.com')
       .google()
       .render();
   }, []);
@@ -100,157 +94,25 @@ function AuthButton() {
 }
 ```
 
-## How cross-subdomain sync works
+## GIS (Google Identity Services)
 
-- Uses cookies to share auth state across `*.yourdomain.com`
-- Login on `app1.example.com` → auto-login on `app2.example.com`
-- Logout anywhere → logout everywhere via `visibilityChange` events
-- **Only works for same-site subdomains** (not different domains)
-- Automatic sync when switching between tabs/domains
+Popup-free login. Requires OAuth client setup in [Google Cloud Console](https://console.cloud.google.com/apis/credentials). See [docs/gis.md](docs/gis.md) for full setup.
 
-## Supported scenarios
-
-✅ `app.example.com` ↔ `admin.example.com`  
-✅ `example.com` ↔ `blog.example.com`  
-❌ `example.com` ↔ `different.com`
-
-## Cross-domain configuration
-
-**Chainable API:**
-```javascript
-Cheesso('#container')
-  .firebase(config)
-  .crossDomain('.example.com') // Your domain
-  .google()
-  .render();
-```
-
-**Programmatic API:**
-```javascript
-new Cheesso({
-  provider: 'firebase',
-  firebaseConfig: { /* ... */ },
-  crossDomainCookie: '.example.com'
-});
-```
-
-## Full chainable API
-
-```javascript
-Cheesso('#container')
-  .firebase(config)     // or .cognito(config)
-  .crossDomain('.example.com') // Set cookie domain
-  .google()            // Add Google login
-  .microsoft()         // Add Microsoft login  
-  .apple()             // Add Apple login
-  .facebook()          // Add Facebook login
-  .github()            // Add GitHub login
-  .loginText('Sign In')
-  .logoutText('Sign Out')
-  .hoverDropdown(true) // Open on hover
-  .render();
-```
-
-## Google Identity Services (GIS) Integration
-
-Cheesso supports Google Identity Services for popup-free authentication experience, similar to Medium's login flow.
-
-### Setup GIS Authentication
-
-**1. Load GIS Script:**
-```html
-<script src="https://accounts.google.com/gsi/client" async defer></script>
-```
-
-**2. Configure OAuth Client:**
-- Go to [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
-- **Important**: Select your Firebase project from the project dropdown (top-left)
-- Find your OAuth 2.0 Client ID (should match your Firebase project)
-- Edit the client and add your domains to **Authorized JavaScript origins**:
-  ```
-  https://yourdomain.com
-  https://www.yourdomain.com
-  http://localhost:3000  # For development
-  ```
-- **Note**: Wildcards (*.domain.com) are NOT supported
-
-**3. Use GIS with Cheesso:**
-
-**Option A: With UI Button + GIS Auto-prompt**
-```javascript
-import { CheessoAuthButton } from 'cheesso/ui';
-
-const authButton = new CheessoAuthButton({
-  container: '#auth-button',
-  provider: 'firebase',
-  firebaseConfig: { /* your config */ },
-  crossDomainCookie: '.yourdomain.com',
-  socialProviders: ['google', 'github']
-});
-
-// Get underlying Cheesso instance for GIS
+```ts
 const cheesso = authButton.getCheesso();
 
-// Setup GIS auto-prompt (only if not authenticated)
-if (window.google && !cheesso.isAuthenticated()) {
-  window.google.accounts.id.initialize({
-    client_id: "YOUR-FIREBASE-WEB-CLIENT-ID.apps.googleusercontent.com",
-    callback: async (response) => {
-      await cheesso.loginWithGIS(response.credential);
-    }
-  });
-  
-  // Auto-show login prompt (no popup blocker)
-  window.google.accounts.id.prompt();
-}
-```
-
-**Option B: Programmatic Only**
-```javascript
-import { Cheesso } from 'cheesso';
-
-const cheesso = new Cheesso({
-  provider: 'firebase',
-  firebaseConfig: { /* your config */ },
-  crossDomainCookie: '.yourdomain.com'
+google.accounts.id.initialize({
+  client_id: "YOUR_CLIENT_ID.apps.googleusercontent.com",
+  callback: (res) => cheesso.loginWithGIS(res.credential)
 });
-
-await cheesso.initialize();
-
-// Setup GIS auto-prompt (only if not authenticated)
-if (window.google && !cheesso.isAuthenticated()) {
-  window.google.accounts.id.initialize({
-    client_id: "YOUR-FIREBASE-WEB-CLIENT-ID.apps.googleusercontent.com",
-    callback: async (response) => {
-      await cheesso.loginWithGIS(response.credential);
-    }
-  });
-  
-  window.google.accounts.id.prompt();
-}
+google.accounts.id.prompt();
 ```
 
-### Finding Your Web Client ID
+## Limitations
 
-Your Firebase project automatically creates a web OAuth client. The format is:
-```
-PROJECT-NUMBER-randomstring.apps.googleusercontent.com
-```
-
-**Troubleshooting:**
-- **"Origin not allowed"**: Add your domain to Authorized JavaScript origins
-- **"Project not found"**: Make sure you selected the correct Firebase project in Google Cloud Console
-- **Can't find client ID**: Look for "OAuth 2.0 Client IDs" section in GCP Credentials
-- **Prompt not showing after dismiss**: GIS has a cooldown mechanism - if user clicks "X" to close the prompt, it won't auto-show again for a period. Clear Google cookies or use incognito mode to reset, or provide a manual login button as fallback
-
-### GIS vs Firebase Popup
-
-| Method | User Experience | Popup Blocker | Setup Complexity |
-|--------|-----------------|---------------|------------------|
-| Firebase `signInWithPopup` | Requires user click | Can be blocked | Simple |
-| Google Identity Services | Auto-prompt, like Medium | Never blocked | Requires OAuth setup |
-
-Both methods write to the same Firebase Auth instance and support cross-domain sync.
+- Cookie carries user info, not a Firebase token. Other subdomains can display who's logged in but cannot call Firestore or other Firebase services.
+- SSO cookie expires after 24 hours.
+- GIS prompt has a cooldown after user dismisses it.
 
 ## License
 
