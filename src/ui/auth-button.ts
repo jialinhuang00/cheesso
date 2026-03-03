@@ -133,7 +133,7 @@ export class CheessoAuthButton {
     this.attachLoginEventListeners();
   }
 
-  private renderUserInfo(ssoUser?: any): void {
+  private renderUserInfo(ssoUser?: CheessoUser): void {
     const user = ssoUser || this.currentUser;
     if (!user) return;
 
@@ -373,7 +373,7 @@ export class CheessoAuthButton {
       .slice(0, 2);
   }
 
-  private formatUserDataAsJSON(user?: any): string {
+  private formatUserDataAsJSON(user?: CheessoUser): string {
     const targetUser = user || this.currentUser;
     if (!targetUser) return '';
 
@@ -405,7 +405,7 @@ export class CheessoAuthButton {
     return 'firebase';
   }
 
-  private syntaxHighlightJSON(obj: any): string {
+  private syntaxHighlightJSON(obj: Record<string, unknown>): string {
     const json = JSON.stringify(obj, null, 2);
 
     return json

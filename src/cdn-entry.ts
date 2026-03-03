@@ -1,4 +1,4 @@
-// Complete Cheesso bundle with UI components
+// CDN entry point — bundles core + UI into a single file with window.Cheesso
 export * from './index';
 export * from './ui';
 

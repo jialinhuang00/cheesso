@@ -1,3 +1,5 @@
+import { CheessoUser } from './types';
+
 export class CrossDomainMessenger {
   private domain: string;
 
@@ -11,7 +13,7 @@ export class CrossDomainMessenger {
       const expires = new Date(Date.now() + maxAge * 1000).toUTCString();
       // URL encode the value to handle special characters and prevent truncation
       const encodedValue = encodeURIComponent(value);
-      document.cookie = `${key}=${encodedValue}; domain=${this.domain}; path=/; expires=${expires}; samesite=lax`;
+      document.cookie = `${key}=${encodedValue}; domain=${this.domain}; path=/; expires=${expires}; samesite=lax; secure`;
     } catch (error) {
       console.warn('Failed to set cross-domain cookie:', error);
     }
@@ -35,13 +37,13 @@ export class CrossDomainMessenger {
 
   clearCrossDomainCookie(key: string): void {
     try {
-      document.cookie = `${key}=; domain=${this.domain}; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+      document.cookie = `${key}=; domain=${this.domain}; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; secure`;
     } catch (error) {
       console.warn('Failed to clear cross-domain cookie:', error);
     }
   }
 
-  setupCrossDomainSync(callback: (authData: any) => void): () => void {
+  setupCrossDomainSync(callback: (authData: { token: string | null; user: CheessoUser | null }) => void): () => void {
     const checkAuthSync = () => {
       const ssoUserData = this.getCrossDomainCookie('cheesso_sso_user');
 

@@ -2,6 +2,13 @@ import { FirebaseAuthProvider } from './providers';
 import { CrossDomainMessenger } from './cross-domain';
 import { CheessoConfig, CheessoUser, CheessoAuthState, SocialProvider } from './types';
 
+interface CheessoEventMap {
+  'auth-changed': CheessoAuthState;
+  'login-success': CheessoUser;
+  'logout-success': null;
+  'auth-error': Error;
+}
+
 export class Cheesso {
   private authProvider: FirebaseAuthProvider;
   private crossDomain: CrossDomainMessenger;
@@ -78,7 +85,7 @@ export class Cheesso {
     }
   }
 
-  private handleCrossDomainAuthSync(authData: any): void {
+  private handleCrossDomainAuthSync(authData: { token: string | null; user: CheessoUser | null }): void {
     if (!authData.token && !authData.user) {
       // Cookie gone — another domain logged out
       if (this.ssoManagedAuth || this.currentSSOState?.isAuthenticated) {
@@ -157,7 +164,7 @@ export class Cheesso {
     });
   }
 
-  private emitAuthEvent(type: string, data: any): void {
+  private emitAuthEvent<K extends keyof CheessoEventMap>(type: K, data: CheessoEventMap[K]): void {
     const event = new CustomEvent(`cheesso:${type}`, { detail: data });
     window.dispatchEvent(event);
   }
@@ -182,7 +189,7 @@ export class Cheesso {
       this.emitAuthEvent('login-success', user);
       return user;
     } catch (error) {
-      this.emitAuthEvent('auth-error', error);
+      this.emitAuthEvent('auth-error', error instanceof Error ? error : new Error(String(error)));
       throw error;
     }
   }
@@ -193,7 +200,7 @@ export class Cheesso {
       this.emitAuthEvent('login-success', user);
       return user;
     } catch (error) {
-      this.emitAuthEvent('auth-error', error);
+      this.emitAuthEvent('auth-error', error instanceof Error ? error : new Error(String(error)));
       throw error;
     }
   }
@@ -216,12 +223,12 @@ export class Cheesso {
       this.emitAuthEvent('logout-success', null);
     } catch (error) {
       console.error('Logout failed:', error);
-      this.emitAuthEvent('auth-error', error);
+      this.emitAuthEvent('auth-error', error instanceof Error ? error : new Error(String(error)));
       throw error;
     }
   }
 
-  private currentSSOState: any = null;
+  private currentSSOState: CheessoAuthState | null = null;
 
   isAuthenticated(): boolean {
     if (this.ssoManagedAuth) {
@@ -266,8 +273,7 @@ export class Cheesso {
   }
 
   // Event listeners for auth events
-  on(eventType: 'auth-changed' | 'login-success' | 'logout-success' | 'auth-error',
-    callback: (data: any) => void): () => void {
+  on<K extends keyof CheessoEventMap>(eventType: K, callback: (data: CheessoEventMap[K]) => void): () => void {
 
     const handler = (event: CustomEvent) => callback(event.detail);
     const eventName = `cheesso:${eventType}`;

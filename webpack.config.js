@@ -1,9 +1,9 @@
 const path = require('path');
 
 module.exports = {
-  entry: './src/complete.ts',
+  entry: './src/cdn-entry.ts',
   output: {
-    filename: 'cheesso-complete.js',
+    filename: 'cheesso.min.js',
     path: path.resolve(__dirname, 'dist'),
     library: {
       name: 'Cheesso',
@@ -20,7 +20,10 @@ module.exports = {
     rules: [
       {
         test: /\.ts$/,
-        use: 'ts-loader',
+        use: {
+          loader: 'ts-loader',
+          options: { compilerOptions: { declaration: false } }
+        },
         exclude: /node_modules/,
       },
     ],
