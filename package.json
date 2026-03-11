@@ -4,23 +4,23 @@
   "description": "Swiss cheese SSO library - holes that take you anywhere 🧀",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "module": "dist/index.js",
+  "module": "dist/esm/index.js",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
+      "import": "./dist/esm/index.js",
       "require": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./ui": {
       "types": "./dist/ui/index.d.ts",
-      "import": "./dist/ui/index.js",
+      "import": "./dist/esm/ui/index.js",
       "require": "./dist/ui/index.js",
       "default": "./dist/ui/index.js"
     }
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && tsc -p tsconfig.esm.json",
     "build:ui": "webpack --mode=production",
     "build:all": "npm run build && npm run build:ui",
     "dev": "tsc --watch",
