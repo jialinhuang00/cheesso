@@ -78,7 +78,9 @@ export class FirebaseAuthProvider extends BaseAuthProvider {
   private createSocialProvider(provider: SocialProvider) {
     switch (provider) {
       case 'google':
-        return new GoogleAuthProvider();
+        const googleProvider = new GoogleAuthProvider();
+        googleProvider.setCustomParameters({ prompt: 'select_account' });
+        return googleProvider;
       case 'microsoft':
         const microsoftProvider = new OAuthProvider('microsoft.com');
         microsoftProvider.addScope('user.read');
