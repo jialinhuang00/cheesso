@@ -5,6 +5,7 @@ export abstract class BaseAuthProvider {
   protected currentState: CheessoAuthState = {
     isAuthenticated: false,
     user: null,
+    knownUser: null,
     loading: true
   };
 

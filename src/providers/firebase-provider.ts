@@ -14,6 +14,16 @@ import {
 import { BaseAuthProvider } from './base-auth';
 import { FirebaseConfig, CheessoUser, CheessoAuthState, SocialProvider } from '../types';
 
+export interface PopupLoginResult {
+  user: CheessoUser;
+  /**
+   * Google's ID token from the popup, present only for the Google provider.
+   * Another origin of the same Firebase project can sign in with it through
+   * signInWithGoogleIdToken(), which is what makes the SSO cookie worth sharing.
+   */
+  googleIdToken: string | null;
+}
+
 export class FirebaseAuthProvider extends BaseAuthProvider {
   private app: FirebaseApp;
   private auth: Auth;
@@ -33,11 +43,28 @@ export class FirebaseAuthProvider extends BaseAuthProvider {
     this.setupAuthListener();
   }
 
+  /**
+   * Resolves once Firebase has read the session persisted for this origin
+   * (IndexedDB), so currentUser is trustworthy afterwards.
+   */
+  async waitForStoredSession(): Promise<void> {
+    await this.auth.authStateReady();
+    const user = this.auth.currentUser;
+    this.currentState = {
+      isAuthenticated: !!user,
+      user: user ? this.mapFirebaseUser(user) : null,
+      knownUser: null,
+      loading: false
+    };
+  }
+
   private setupAuthListener(): void {
+    if (this.unsubscribeAuth) return;
     this.unsubscribeAuth = onAuthStateChanged(this.auth, (user: User | null) => {
       const newState: CheessoAuthState = {
         isAuthenticated: !!user,
         user: user ? this.mapFirebaseUser(user) : null,
+        knownUser: null,
         loading: false
       };
 
@@ -56,10 +83,18 @@ export class FirebaseAuthProvider extends BaseAuthProvider {
 
 
   async loginWithSocial(provider: SocialProvider): Promise<CheessoUser> {
+    const result = await this.loginWithSocialPopup(provider);
+    return result.user;
+  }
+
+  async loginWithSocialPopup(provider: SocialProvider): Promise<PopupLoginResult> {
     try {
       const authProvider = this.createSocialProvider(provider);
       const result = await signInWithPopup(this.auth, authProvider);
-      return this.mapFirebaseUser(result.user);
+      const googleIdToken = provider === 'google'
+        ? GoogleAuthProvider.credentialFromResult(result)?.idToken ?? null
+        : null;
+      return { user: this.mapFirebaseUser(result.user), googleIdToken };
     } catch (error: unknown) {
       // Handle account-exists-with-different-credential error
       const firebaseError = error as { code?: string; customData?: { email?: string }; message?: string };
@@ -70,7 +105,7 @@ export class FirebaseAuthProvider extends BaseAuthProvider {
           throw new Error(`Looks like ${email} is already taken by another login method. Try signing in with your original method instead!`);
         }
       }
-      
+
       throw new Error(`Firebase ${provider} login failed: ${firebaseError.message}`);
     }
   }
@@ -112,20 +147,29 @@ export class FirebaseAuthProvider extends BaseAuthProvider {
     }
   }
 
-  async loginWithGISCredential(idToken: string): Promise<CheessoUser> {
+  /**
+   * Signs this origin in with a Google ID token: one from GIS, or one another
+   * subdomain shared through the SSO cookie after its own popup login.
+   */
+  async signInWithGoogleIdToken(idToken: string): Promise<CheessoUser> {
     try {
-      // GIS returns JWT ID token, use it directly with GoogleAuthProvider
       const credential = GoogleAuthProvider.credential(idToken, null);
       const result = await signInWithCredential(this.auth, credential);
       return this.mapFirebaseUser(result.user);
     } catch (error) {
-      throw new Error(`GIS credential login failed: ${(error as Error).message}`);
+      throw new Error(`Google ID token login failed: ${(error as Error).message}`);
     }
+  }
+
+  /** @deprecated use signInWithGoogleIdToken */
+  async loginWithGISCredential(idToken: string): Promise<CheessoUser> {
+    return this.signInWithGoogleIdToken(idToken);
   }
 
   destroy(): void {
     if (this.unsubscribeAuth) {
       this.unsubscribeAuth();
+      this.unsubscribeAuth = null;
     }
     this.authStateListeners = [];
   }

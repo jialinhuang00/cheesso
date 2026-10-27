@@ -9,159 +9,234 @@ interface CheessoEventMap {
   'auth-error': Error;
 }
 
+/** Seconds the "who is signed in" cookie lives. Display only; grants nothing. */
+const USER_COOKIE_MAX_AGE = 86400;
+/** Seconds the shared Google ID token lives. Short on purpose: it can sign in. */
+const DEFAULT_TOKEN_COOKIE_MAX_AGE = 600;
+/** Seconds the logout marker lives, so sites opened later still notice. */
+const LOGOUT_MARKER_MAX_AGE = 86400;
+
+/**
+ * How the subdomains share one login.
+ *
+ * Firebase Auth keeps its session per origin, so a login on app.example.com
+ * is invisible to blog.example.com. cheesso bridges that with cookies on the
+ * parent domain (.example.com), all named after the Firebase project so two
+ * apps on different projects under the same parent never read each other's:
+ *
+ *   cheesso_sso_user_<projectId>    who is signed in (uid, email, name, photo). 24 h.
+ *                                   Lets the next site show "sign in as X". Grants nothing.
+ *   cheesso_sso_token_<projectId>   the Google ID token from the popup. 10 min.
+ *                                   The next site signs in with it, no popup, and from
+ *                                   then on has its own Firebase session.
+ *   cheesso_sso_logout_<projectId>  timestamp of the last logout. 24 h.
+ *                                   A site whose session is older than it signs out too.
+ *
+ * isAuthenticated() and getUser() reflect Firebase on this origin only. A
+ * cookie by itself never counts as being logged in.
+ */
 export class Cheesso {
   private authProvider: FirebaseAuthProvider;
   private crossDomain: CrossDomainMessenger;
-  private initialized = false;
+  private cookies: { user: string; token: string; logout: string };
+  private loginAtKey: string;
+  private tokenCookieMaxAge: number;
 
-  private ssoManagedAuth = false;
+  private initPromise: Promise<void> | null = null;
+  private initialized = false;
+  private knownUser: CheessoUser | null = null;
+  private tokenLoginInFlight = false;
+  private stopCrossDomainSync: (() => void) | null = null;
 
   constructor(config: CheessoConfig) {
     if (!config.crossDomainCookie) {
       throw new Error('crossDomainCookie is required in CheessoConfig');
     }
-
-    this.authProvider = this.createAuthProvider(config);
-    this.crossDomain = new CrossDomainMessenger(config.crossDomainCookie);
-
-    // SSO check runs synchronously to set ssoManagedAuth before listeners fire
-    this.checkSSOAutoLogin();
-
-    // Always set up both listeners regardless of SSO path
-    this.setupAuthStateListener();
-    this.crossDomain.setupCrossDomainSync((authData) => {
-      this.handleCrossDomainAuthSync(authData);
-    });
-  }
-
-  private createAuthProvider(config: CheessoConfig): FirebaseAuthProvider {
     if (!config.firebaseConfig) {
       throw new Error('Firebase config is required');
     }
-    return new FirebaseAuthProvider(config.firebaseConfig);
-  }
 
-  private ssoLoginInProgress = false;
-  private lastCookieClearTime = 0;
+    const projectId = config.firebaseConfig.projectId;
+    this.cookies = {
+      user: `cheesso_sso_user_${projectId}`,
+      token: `cheesso_sso_token_${projectId}`,
+      logout: `cheesso_sso_logout_${projectId}`
+    };
+    this.loginAtKey = `cheesso_login_at_${projectId}`;
+    this.tokenCookieMaxAge = config.tokenCookieMaxAge ?? DEFAULT_TOKEN_COOKIE_MAX_AGE;
 
-  private checkSSOAutoLogin(): void {
-    try {
-      const currentState = this.authProvider.getAuthState();
-      if (currentState.isAuthenticated) return;
+    this.authProvider = new FirebaseAuthProvider(config.firebaseConfig);
+    this.crossDomain = new CrossDomainMessenger(config.crossDomainCookie);
 
-      const ssoUserData = this.crossDomain.getCrossDomainCookie('cheesso_sso_user');
-      if (!ssoUserData) return;
+    // 1.x wrote one cookie for every project under this name. It carries no
+    // project tag, so it cannot be trusted; drop it once.
+    this.crossDomain.clearCrossDomainCookie('cheesso_sso_user');
 
-      this.ssoLoginInProgress = true;
-      try {
-        const userInfo = JSON.parse(ssoUserData);
+    this.knownUser = this.readUserCookie();
 
-        // Check if data is not too old (24 hours)
-        if (userInfo.timestamp && (Date.now() - userInfo.timestamp) > 86400000) {
-          this.crossDomain.clearCrossDomainCookie('cheesso_sso_user');
-          return;
-        }
-
-        this.ssoManagedAuth = true;
-        this.currentSSOState = {
-          isAuthenticated: true,
-          user: {
-            uid: userInfo.uid,
-            email: userInfo.email,
-            displayName: userInfo.displayName,
-            photoURL: userInfo.photoURL
-          },
-          loading: false
-        };
-        this.emitAuthEvent('auth-changed', this.currentSSOState);
-      } catch {
-        this.crossDomain.clearCrossDomainCookie('cheesso_sso_user');
-      } finally {
-        this.ssoLoginInProgress = false;
-      }
-    } catch (error) {
-      console.warn('SSO auto-login failed:', error);
-      this.ssoLoginInProgress = false;
-    }
-  }
-
-  private handleCrossDomainAuthSync(authData: { token: string | null; user: CheessoUser | null }): void {
-    if (!authData.token && !authData.user) {
-      // Cookie gone — another domain logged out
-      if (this.ssoManagedAuth || this.currentSSOState?.isAuthenticated) {
-        const loggedOutState = {
-          isAuthenticated: false,
-          user: null,
-          loading: false
-        };
-        this.currentSSOState = loggedOutState;
-        this.ssoManagedAuth = false;
-        this.emitAuthEvent('auth-changed', loggedOutState);
-      }
-
-      this.authProvider.logout().catch(error => {
-        console.warn('Firebase Auth logout failed (may already be logged out):', error);
-      });
-    } else if (authData.user) {
-      // Cookie found — another domain logged in
-      const loginState = {
-        isAuthenticated: true,
-        user: {
-          uid: authData.user.uid,
-          email: authData.user.email,
-          displayName: authData.user.displayName,
-          photoURL: authData.user.photoURL
-        },
-        loading: false
-      };
-
-      this.ssoManagedAuth = true;
-      this.currentSSOState = loginState;
-      this.emitAuthEvent('auth-changed', loginState);
-    }
-  }
-
-  private async setSSOCookie(): Promise<void> {
-    try {
-      // Store user info instead of Firebase token for better cross-domain compatibility
-      const currentState = this.authProvider.getAuthState();
-      if (currentState.isAuthenticated && currentState.user) {
-        const userInfo = {
-          uid: currentState.user.uid,
-          email: currentState.user.email,
-          displayName: currentState.user.displayName,
-          photoURL: currentState.user.photoURL,
-          timestamp: Date.now()
-        };
-
-        // Set cookie with 24 hour expiration
-        this.crossDomain.setCrossDomainCookie('cheesso_sso_user', JSON.stringify(userInfo), 86400);
-      }
-    } catch (error) {
-      console.warn('Failed to set SSO cookie:', error);
-    }
-  }
-
-  private setupAuthStateListener(): void {
-    this.authProvider.onAuthStateChanged((state) => {
-      if (state.isAuthenticated && state.user) {
-        // Firebase has a real session — it takes over from SSO
-        this.ssoManagedAuth = false;
-        this.setSSOCookie();
-      } else if (!this.ssoLoginInProgress && !this.ssoManagedAuth) {
-        // Only clear cookie when not SSO-managed and not mid-login
-        const now = Date.now();
-        if (now - this.lastCookieClearTime > 5000) {
-          this.crossDomain.clearCrossDomainCookie('cheesso_sso_user');
-          this.lastCookieClearTime = now;
-        }
-      }
-
-      // Only emit Firebase state changes when SSO isn't managing auth
-      if (!this.ssoManagedAuth) {
-        this.emitAuthEvent('auth-changed', state);
-      }
+    this.authProvider.onAuthStateChanged((state) => this.onFirebaseState(state));
+    this.stopCrossDomainSync = this.crossDomain.setupCrossDomainSync(() => {
+      this.syncFromCookies().catch((error) => console.warn('SSO sync failed:', error));
     });
+  }
+
+  // ---- lifecycle ----------------------------------------------------------
+
+  /**
+   * Restores this origin's stored session, or signs in with a token another
+   * subdomain shared. Idempotent: every call returns the same promise.
+   */
+  initialize(): Promise<void> {
+    this.initPromise ??= this.doInitialize();
+    return this.initPromise;
+  }
+
+  private async doInitialize(): Promise<void> {
+    await this.authProvider.initialize();
+    await this.authProvider.waitForStoredSession();
+
+    if (this.authProvider.isAuthenticated()) {
+      this.rememberLoginAt(false);
+    } else {
+      await this.tryTokenLogin();
+    }
+
+    this.initialized = true;
+    await this.syncFromCookies();
+    this.emitAuthEvent('auth-changed', this.getAuthState());
+  }
+
+  private onFirebaseState(state: CheessoAuthState): void {
+    if (!this.initialized) return;
+    this.emitAuthEvent('auth-changed', { ...state, knownUser: state.isAuthenticated ? null : this.knownUser });
+  }
+
+  // ---- cookie sync --------------------------------------------------------
+
+  /**
+   * Runs at the end of initialize() and whenever the tab comes back into view.
+   * Applies what other subdomains wrote while this tab was not looking.
+   */
+  private async syncFromCookies(): Promise<void> {
+    if (this.authProvider.isAuthenticated()) {
+      const logoutAt = this.readLogoutMarker();
+      if (logoutAt !== null && logoutAt > this.readLoginAt()) {
+        // Another subdomain logged out after this one logged in.
+        await this.authProvider.logout();
+        this.knownUser = this.readUserCookie();
+        this.emitAuthEvent('auth-changed', this.getAuthState());
+        return;
+      }
+      // The user cookie expires after 24 h while the Firebase session lives
+      // on. Re-share so sibling subdomains keep showing who is signed in.
+      if (!this.readUserCookie()) {
+        const user = this.authProvider.getUser();
+        if (user) this.writeUserCookie(user);
+      }
+      return;
+    }
+
+    const known = this.readUserCookie();
+    if (known?.uid !== this.knownUser?.uid) {
+      this.knownUser = known;
+      if (this.initialized) this.emitAuthEvent('auth-changed', this.getAuthState());
+    }
+
+    // Another subdomain logged in while this tab was open: use its token.
+    if (this.initialized) await this.tryTokenLogin();
+  }
+
+  private async tryTokenLogin(): Promise<boolean> {
+    if (this.tokenLoginInFlight) return false;
+    const token = this.crossDomain.getCrossDomainCookie(this.cookies.token);
+    if (!token) return false;
+
+    this.tokenLoginInFlight = true;
+    try {
+      const user = await this.authProvider.signInWithGoogleIdToken(token);
+      this.rememberLoginAt(true);
+      this.emitAuthEvent('login-success', user);
+      return true;
+    } catch (error) {
+      // Expired, revoked, or minted for another project: stop retrying it.
+      this.crossDomain.clearCrossDomainCookie(this.cookies.token);
+      console.warn('SSO token login failed:', error);
+      return false;
+    } finally {
+      this.tokenLoginInFlight = false;
+    }
+  }
+
+  private shareLogin(user: CheessoUser, googleIdToken: string | null): void {
+    this.writeUserCookie(user);
+    if (googleIdToken) {
+      this.crossDomain.setCrossDomainCookie(this.cookies.token, googleIdToken, this.tokenCookieMaxAge);
+    }
+    this.crossDomain.clearCrossDomainCookie(this.cookies.logout);
+    this.rememberLoginAt(true);
+  }
+
+  private writeUserCookie(user: CheessoUser): void {
+    const userInfo = {
+      uid: user.uid,
+      email: user.email,
+      displayName: user.displayName,
+      photoURL: user.photoURL,
+      timestamp: Date.now()
+    };
+    this.crossDomain.setCrossDomainCookie(this.cookies.user, JSON.stringify(userInfo), USER_COOKIE_MAX_AGE);
+  }
+
+  private readUserCookie(): CheessoUser | null {
+    const raw = this.crossDomain.getCrossDomainCookie(this.cookies.user);
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      if (typeof parsed?.uid !== 'string') return null;
+      return {
+        uid: parsed.uid,
+        email: typeof parsed.email === 'string' ? parsed.email : null,
+        displayName: typeof parsed.displayName === 'string' ? parsed.displayName : null,
+        photoURL: typeof parsed.photoURL === 'string' ? parsed.photoURL : null
+      };
+    } catch {
+      this.crossDomain.clearCrossDomainCookie(this.cookies.user);
+      return null;
+    }
+  }
+
+  private readLogoutMarker(): number | null {
+    const raw = this.crossDomain.getCrossDomainCookie(this.cookies.logout);
+    if (!raw) return null;
+    const ts = Number(raw);
+    return Number.isFinite(ts) ? ts : null;
+  }
+
+  /**
+   * When this origin's session began. Kept in localStorage (per origin) so a
+   * reloaded page still knows whether a logout marker is newer than its login.
+   * `always` = an explicit login; otherwise only fill in a missing value.
+   */
+  private rememberLoginAt(always: boolean): void {
+    try {
+      if (always || !localStorage.getItem(this.loginAtKey)) {
+        localStorage.setItem(this.loginAtKey, String(Date.now()));
+      }
+    } catch {
+      // Storage blocked: readLoginAt() falls back to "now", which only means
+      // a logout elsewhere is not propagated to this already-open page.
+    }
+  }
+
+  private readLoginAt(): number {
+    try {
+      const raw = localStorage.getItem(this.loginAtKey);
+      const ts = raw ? Number(raw) : NaN;
+      if (Number.isFinite(ts)) return ts;
+    } catch {
+      // see rememberLoginAt
+    }
+    return Date.now();
   }
 
   private emitAuthEvent<K extends keyof CheessoEventMap>(type: K, data: CheessoEventMap[K]): void {
@@ -169,23 +244,12 @@ export class Cheesso {
     window.dispatchEvent(event);
   }
 
-  async initialize(): Promise<void> {
-    if (this.initialized) return;
-
-    // Initialize the auth provider
-    await this.authProvider.initialize();
-
-    // SSO will check for existing auth state via cookies automatically
-
-    // SSO will handle cross-domain sync automatically via cookies
-
-    this.initialized = true;
-  }
-
+  // ---- public API ---------------------------------------------------------
 
   async loginWithSocial(provider: SocialProvider): Promise<CheessoUser> {
     try {
-      const user = await this.authProvider.loginWithSocial(provider);
+      const { user, googleIdToken } = await this.authProvider.loginWithSocialPopup(provider);
+      this.shareLogin(user, googleIdToken);
       this.emitAuthEvent('login-success', user);
       return user;
     } catch (error) {
@@ -196,7 +260,8 @@ export class Cheesso {
 
   async loginWithGIS(idToken: string): Promise<CheessoUser> {
     try {
-      const user = await this.authProvider.loginWithGISCredential(idToken);
+      const user = await this.authProvider.signInWithGoogleIdToken(idToken);
+      this.shareLogin(user, idToken);
       this.emitAuthEvent('login-success', user);
       return user;
     } catch (error) {
@@ -207,17 +272,10 @@ export class Cheesso {
 
   async logout(): Promise<void> {
     try {
-      this.crossDomain.clearCrossDomainCookie('cheesso_sso_user');
-
-      const loggedOutState = {
-        isAuthenticated: false,
-        user: null,
-        loading: false
-      };
-      this.currentSSOState = loggedOutState;
-      // Reset SSO flag BEFORE Firebase logout so listeners work normally
-      this.ssoManagedAuth = false;
-      this.emitAuthEvent('auth-changed', loggedOutState);
+      this.crossDomain.clearCrossDomainCookie(this.cookies.user);
+      this.crossDomain.clearCrossDomainCookie(this.cookies.token);
+      this.crossDomain.setCrossDomainCookie(this.cookies.logout, String(Date.now()), LOGOUT_MARKER_MAX_AGE);
+      this.knownUser = null;
 
       await this.authProvider.logout();
       this.emitAuthEvent('logout-success', null);
@@ -228,46 +286,46 @@ export class Cheesso {
     }
   }
 
-  private currentSSOState: CheessoAuthState | null = null;
-
+  /** true only when Firebase Auth has a session on this origin */
   isAuthenticated(): boolean {
-    if (this.ssoManagedAuth) {
-      return this.currentSSOState?.isAuthenticated || false;
-    }
     return this.authProvider.isAuthenticated();
   }
 
+  /** the Firebase user on this origin, or null */
   getUser(): CheessoUser | null {
-    if (this.ssoManagedAuth && this.currentSSOState?.user) {
-      return this.currentSSOState.user;
-    }
     return this.authProvider.getUser();
   }
 
-  getSSOUser(): CheessoUser | null {
-    const ssoData = this.crossDomain.getCrossDomainCookie('cheesso_sso_user');
-    if (!ssoData) return null;
-    try {
-      const parsed = JSON.parse(ssoData);
-      return {
-        uid: parsed.uid,
-        email: parsed.email,
-        displayName: parsed.displayName,
-        photoURL: parsed.photoURL
-      };
-    } catch {
-      return null;
-    }
+  /**
+   * Who is signed in on a sibling subdomain, when this origin is not.
+   * For a "sign in as X" button. Null once this origin has its own session.
+   */
+  getKnownUser(): CheessoUser | null {
+    return this.authProvider.isAuthenticated() ? null : this.knownUser;
   }
 
+  /** @deprecated use getKnownUser() */
+  getSSOUser(): CheessoUser | null {
+    return this.getKnownUser();
+  }
+
+  /** Forgets the shared "who is signed in" cookie. Does not sign anything out. */
   clearSSOCookie(): void {
-    this.crossDomain.clearCrossDomainCookie('cheesso_sso_user');
+    this.crossDomain.clearCrossDomainCookie(this.cookies.user);
+    this.knownUser = null;
   }
 
   getAuthState(): CheessoAuthState {
-    return this.authProvider.getAuthState();
+    const state = this.authProvider.getAuthState();
+    return {
+      isAuthenticated: state.isAuthenticated,
+      user: state.user,
+      knownUser: state.isAuthenticated ? null : this.knownUser,
+      loading: !this.initialized
+    };
   }
 
+  /** Firebase-level state on this origin. Fires immediately with the current state. */
   onAuthStateChanged(callback: (state: CheessoAuthState) => void): () => void {
     return this.authProvider.onAuthStateChanged(callback);
   }
@@ -286,7 +344,8 @@ export class Cheesso {
   }
 
   destroy(): void {
+    this.stopCrossDomainSync?.();
+    this.stopCrossDomainSync = null;
     this.authProvider.destroy();
-    // Firebase will handle cleanup automatically
   }
 }

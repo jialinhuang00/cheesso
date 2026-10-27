@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cheesso SSO test</title>
+<style>
+  body { font: 14px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 24px; max-width: 720px; }
+  h1 { font-size: 18px; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+  td { border-bottom: 1px solid #ddd; padding: 6px 8px; vertical-align: top; font-family: Menlo, monospace; font-size: 12px; word-break: break-all; }
+  td:first-child { width: 34%; color: #666; font-family: inherit; }
+  .ok { color: #1a7f37; } .bad { color: #b42318; } .muted { color: #999; }
+  button { margin-right: 8px; }
+</style>
+</head>
+<body>
+<h1>Cheesso SSO test <span id="host" class="muted"></span></h1>
+
+<p>
+  Serve this file over <strong>https</strong> on two hosts that share a parent domain
+  (for example <code>a.cheesso.test</code> and <code>b.cheesso.test</code>, with
+  <code>cookieDomain = '.cheesso.test'</code>), and add both hosts to Firebase
+  Console → Authentication → Settings → Authorized domains. Cookies are
+  <code>secure</code>, so plain http shows nothing.
+</p>
+
+<div id="auth-button"></div>
+
+<p>
+  <button id="clear-token">clear token cookie</button>
+  <button id="clear-user">clear user cookie</button>
+  <button id="fake-user">write hostile user cookie</button>
+  <button id="refresh">refresh view</button>
+</p>
+
+<table id="state"></table>
+
+<script type="module">
+  // ---- fill in ---------------------------------------------------------
+  const firebaseConfig = {
+    apiKey: "",
+    authDomain: "",
+    projectId: "",
+    storageBucket: "",
+    messagingSenderId: "",
+    appId: ""
+  };
+  const cookieDomain = '.cheesso.test';
+  // ----------------------------------------------------------------------
+
+  import { getApp } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js';
+  import { getAuth } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js';
+  // Point this at the built UI bundle; see docs/module-systems.md.
+  await import('./dist/cheesso.min.js');
+
+  document.getElementById('host').textContent = location.host;
+
+  const button = window.Cheesso('#auth-button')
+    .firebase(firebaseConfig)
+    .crossDomain(cookieDomain)
+    .google()
+    .render();
+  const cheesso = button.getCheesso();
+
+  const names = {
+    user: `cheesso_sso_user_${firebaseConfig.projectId}`,
+    token: `cheesso_sso_token_${firebaseConfig.projectId}`,
+    logout: `cheesso_sso_logout_${firebaseConfig.projectId}`,
+  };
+
+  function cookie(name) {
+    for (const c of document.cookie.split(';')) {
+      const t = c.trim(); const eq = t.indexOf('=');
+      if (eq > -1 && t.slice(0, eq) === name) return decodeURIComponent(t.slice(eq + 1));
+    }
+    return null;
+  }
+  function decodeJwt(token) {
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+      return payload;
+    } catch { return null; }
+  }
+  function row(label, value, cls = '') {
+    return `<tr><td>${label}</td><td class="${cls}">${value}</td></tr>`;
+  }
+
+  async function refresh() {
+    const state = cheesso.getAuthState();
+    let firebaseUid = null, aud = null, exp = null;
+    try {
+      const auth = getAuth(getApp('cheesso'));
+      await auth.authStateReady();
+      firebaseUid = auth.currentUser?.uid ?? null;
+      if (auth.currentUser) {
+        const payload = decodeJwt(await auth.currentUser.getIdToken());
+        aud = payload?.aud ?? null; exp = payload?.exp ? new Date(payload.exp * 1000).toLocaleTimeString() : null;
+      }
+    } catch (e) { firebaseUid = `error: ${e.message}`; }
+
+    const token = cookie(names.token);
+    const tokenPayload = token ? decodeJwt(token) : null;
+    const user = cookie(names.user);
+    const logoutAt = cookie(names.logout);
+    const loginAt = localStorage.getItem(`cheesso_login_at_${firebaseConfig.projectId}`);
+
+    document.getElementById('state').innerHTML =
+      row('cheesso.isAuthenticated()', String(state.isAuthenticated), state.isAuthenticated ? 'ok' : '') +
+      row('cheesso.getUser()?.uid', state.user?.uid ?? 'null') +
+      row('cheesso.getKnownUser()', state.knownUser ? `${state.knownUser.uid} (${state.knownUser.email ?? ''})` : 'null') +
+      row('cheesso.getAuthState().loading', String(state.loading)) +
+      row('Firebase currentUser.uid (truth)', firebaseUid ?? 'null', firebaseUid ? 'ok' : 'bad') +
+      row('Firebase ID token aud / exp', aud ? `${aud} / ${exp}` : '—') +
+      row(`cookie ${names.token}`, token ? `present, exp ${tokenPayload?.exp ? new Date(tokenPayload.exp * 1000).toLocaleTimeString() : '?'}, aud ${tokenPayload?.aud ?? '?'}` : 'absent') +
+      row(`cookie ${names.user}`, user ?? 'absent') +
+      row(`cookie ${names.logout}`, logoutAt ? new Date(Number(logoutAt)).toLocaleTimeString() : 'absent') +
+      row('localStorage login_at', loginAt ? new Date(Number(loginAt)).toLocaleTimeString() : 'absent') +
+      row('agreement', String(state.isAuthenticated) === String(!!firebaseUid && !String(firebaseUid).startsWith('error')) ? 'cheesso matches Firebase' : 'MISMATCH', state.isAuthenticated === !!firebaseUid ? 'ok' : 'bad');
+  }
+
+  const clear = (name) => { document.cookie = `${name}=; domain=${cookieDomain}; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; samesite=lax; secure`; };
+  document.getElementById('clear-token').onclick = () => { clear(names.token); refresh(); };
+  document.getElementById('clear-user').onclick = () => { clear(names.user); refresh(); };
+  document.getElementById('fake-user').onclick = () => {
+    const hostile = { uid: 'fake', email: 'x" onerror="alert(1)', displayName: '<img src=x onerror=alert(1)>', photoURL: 'javascript:alert(1)', timestamp: Date.now() };
+    document.cookie = `${names.user}=${encodeURIComponent(JSON.stringify(hostile))}; domain=${cookieDomain}; path=/; max-age=600; samesite=lax; secure`;
+    location.reload();
+  };
+  document.getElementById('refresh').onclick = refresh;
+
+  cheesso.on('auth-changed', refresh);
+  cheesso.on('login-success', (u) => console.log('login-success', u));
+  cheesso.on('logout-success', () => console.log('logout-success'));
+  cheesso.on('auth-error', (e) => console.error('auth-error', e));
+  await cheesso.initialize();
+  refresh();
+</script>
+</body>
+</html>

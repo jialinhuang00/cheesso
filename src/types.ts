@@ -23,11 +23,26 @@ export interface CheessoConfig {
   firebaseConfig?: FirebaseConfig;
   socialProviders?: SocialProvider[];
   crossDomainCookie?: string; // Domain for SSO cookies (e.g., '.example.com')
+  /**
+   * Seconds the shared Google ID token stays in the cookie after a login.
+   * Other subdomains opened within this window sign in without a popup.
+   * Default 600. The token itself expires on Google's schedule (about an hour).
+   */
+  tokenCookieMaxAge?: number;
 }
 
 export interface CheessoAuthState {
+  /** true only when Firebase Auth has a session on this origin */
   isAuthenticated: boolean;
+  /** the Firebase user on this origin, or null */
   user: CheessoUser | null;
+  /**
+   * Who is signed in on a sibling subdomain (from the shared cookie) when this
+   * origin has no session of its own. Lets the UI offer "sign in as X" with one
+   * click. Never grants access: Firebase on this origin still has no user.
+   */
+  knownUser: CheessoUser | null;
+  /** true until initialize() has restored the stored session and tried the shared token */
   loading: boolean;
 }
 
@@ -50,4 +65,3 @@ declare global {
     google?: GoogleIdentityServices;
   }
 }
-

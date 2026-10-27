@@ -147,6 +147,13 @@ const CHEESSO_STYLES = `
   pointer-events: none;
 }
 
+.cheesso-known-user {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .cheesso-error {
   position: fixed;
   top: 24px;

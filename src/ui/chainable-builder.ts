@@ -76,6 +76,12 @@ export class CheessoBuilder {
     return this;
   }
 
+  /** Seconds the shared Google ID token stays in the cookie. Default 600. */
+  tokenMaxAge(seconds: number): CheessoBuilder {
+    this.config.tokenCookieMaxAge = seconds;
+    return this;
+  }
+
   hoverDropdown(enabled: boolean = true): CheessoBuilder {
     this.config.showDropdownOnHover = enabled;
     return this;

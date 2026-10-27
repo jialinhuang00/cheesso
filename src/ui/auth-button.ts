@@ -9,7 +9,30 @@ export interface CheessoUIConfig extends CheessoConfig {
     loginButton?: string;
     providers?: Record<SocialProvider, string>;
     logout?: string;
+    /** label before the name on the one-click button, default 'as' */
+    signInAs?: string;
   };
+}
+
+/** Text that goes between tags. */
+function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/** Only https URLs are allowed into an <img src>; anything else is dropped. */
+function safeImageUrl(url: string | null): string | null {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:' ? parsed.href : null;
+  } catch {
+    return null;
+  }
 }
 
 export class CheessoAuthButton {
@@ -69,13 +92,7 @@ export class CheessoAuthButton {
   }
 
   private setupAuthListener(): void {
-    // Listen to Firebase auth state changes
-    this.cheesso.onAuthStateChanged((state) => {
-      this.currentUser = state.user;
-      this.render();
-    });
-
-    // Also listen to cross-domain auth events
+    // Firebase state on this origin, plus the shared-cookie state from cheesso
     this.cheesso.on('auth-changed', (state) => {
       this.currentUser = state.user;
       this.render();
@@ -86,14 +103,14 @@ export class CheessoAuthButton {
     this.cleanupListeners();
 
     const authState = this.cheesso.getAuthState();
-    const ssoUser = this.cheesso.getSSOUser();
+    this.currentUser = authState.user;
 
     if (authState.loading) {
       this.renderLoading();
     } else if (authState.isAuthenticated && authState.user) {
-      this.renderUserInfo();
-    } else if (ssoUser) {
-      this.renderUserInfo(ssoUser);
+      this.renderUserInfo(authState.user);
+    } else if (authState.knownUser) {
+      this.renderKnownUser(authState.knownUser);
     } else {
       this.renderLoginButton();
     }
@@ -119,7 +136,7 @@ export class CheessoAuthButton {
     this.container.innerHTML = `
       <div class="cheesso-auth-container">
         <button class="cheesso-auth-button" id="cheesso-login-btn">
-          ${loginText}
+          ${escapeHtml(loginText)}
         </button>
         <div class="cheesso-dropdown" id="cheesso-dropdown">
           <div class="cheesso-dropdown-header">choose</div>
@@ -133,33 +150,57 @@ export class CheessoAuthButton {
     this.attachLoginEventListeners();
   }
 
-  private renderUserInfo(ssoUser?: CheessoUser): void {
-    const user = ssoUser || this.currentUser;
-    if (!user) return;
+  /**
+   * Someone is signed in on a sibling subdomain but not here (the shared
+   * token has expired). One click opens the popup; no dropdown.
+   */
+  private renderKnownUser(user: CheessoUser): void {
+    const name = user.displayName || user.email || 'User';
+    const prefix = this.config.customLabels?.signInAs || 'as';
 
+    this.container.innerHTML = `
+      <div class="cheesso-auth-container">
+        <button class="cheesso-auth-button cheesso-known-user" id="cheesso-known-btn" title="${escapeHtml(user.email || name)}">
+          ${escapeHtml(prefix)} ${escapeHtml(name)}
+        </button>
+      </div>
+    `;
+
+    const btn = this.container.querySelector('#cheesso-known-btn') as HTMLButtonElement | null;
+    if (btn) {
+      this.addListener(btn, 'click', (e) => {
+        e.stopPropagation();
+        const provider = this.config.socialProviders?.[0] || 'google';
+        this.handleSocialLogin(provider);
+      });
+    }
+  }
+
+  private renderUserInfo(user: CheessoUser): void {
     const displayName = user.displayName || user.email || 'User';
     const initials = this.getInitials(displayName);
+    const photo = safeImageUrl(user.photoURL);
     const jsonData = this.formatUserDataAsJSON(user);
 
     this.container.innerHTML = `
       <div class="cheesso-auth-container" id="cheesso-auth-container">
         <div class="cheesso-user-avatar" id="cheesso-user-avatar">
-          ${user.photoURL
-        ? `<img src="${user.photoURL}" alt="Avatar" style="width: 100%; height: 100%; object-fit: cover;">`
-        : initials
+          ${photo
+        ? `<img src="${escapeHtml(photo)}" alt="Avatar" style="width: 100%; height: 100%; object-fit: cover;">`
+        : escapeHtml(initials)
       }
         </div>
-        
+
         <div class="cheesso-user-tooltip" id="cheesso-user-tooltip">
           <div class="cheesso-user-tooltip-header">
             payload
             <button class="cheesso-logout-btn" id="cheesso-logout-btn">
-              ${this.config.customLabels?.logout || 'out'}
+              ${escapeHtml(this.config.customLabels?.logout || 'out')}
             </button>
           </div>
           <div class="cheesso-user-tooltip-content">${jsonData}</div>
         </div>
-        
+
       </div>
     `;
 
@@ -180,8 +221,8 @@ export class CheessoAuthButton {
     };
 
     return providers.map(provider => `
-      <button class="cheesso-social-button" data-provider="${provider}">
-        <span>${providerLabels[provider]} </span>
+      <button class="cheesso-social-button" data-provider="${escapeHtml(provider)}">
+        <span>${escapeHtml(providerLabels[provider])} </span>
       </button>
     `).join('');
   }
@@ -299,8 +340,7 @@ export class CheessoAuthButton {
   }
 
   private showTooltip(authContainer: HTMLElement, tooltip: HTMLElement): void {
-    const user = this.currentUser || this.cheesso.getSSOUser();
-    if (!user) return;
+    if (!this.currentUser) return;
 
     authContainer.classList.add('tooltip-active');
     tooltip.classList.add('show');
@@ -373,17 +413,14 @@ export class CheessoAuthButton {
       .slice(0, 2);
   }
 
-  private formatUserDataAsJSON(user?: CheessoUser): string {
-    const targetUser = user || this.currentUser;
-    if (!targetUser) return '';
-
+  private formatUserDataAsJSON(user: CheessoUser): string {
     // Create enhanced user data object
     const userData = {
-      uid: targetUser.uid,
-      email: targetUser.email,
-      displayName: targetUser.displayName,
-      photoURL: targetUser.photoURL,
-      provider: this.detectProvider(),
+      uid: user.uid,
+      email: user.email,
+      displayName: user.displayName,
+      photoURL: user.photoURL,
+      provider: this.detectProvider(user),
       loginTime: new Date().toISOString(),
       isAuthenticated: true,
       authState: this.cheesso.getAuthState()
@@ -393,24 +430,24 @@ export class CheessoAuthButton {
     return this.syntaxHighlightJSON(userData);
   }
 
-  private detectProvider(): string {
-    if (!this.currentUser) return 'unknown';
-
+  private detectProvider(user: CheessoUser): string {
     // Try to detect provider from email or other hints
-    if (this.currentUser.email?.includes('@gmail.com')) return 'google';
-    if (this.currentUser.photoURL?.includes('googleusercontent.com')) return 'google';
-    if (this.currentUser.photoURL?.includes('graph.microsoft.com')) return 'microsoft';
-    if (this.currentUser.photoURL?.includes('platform-lookaside.fbsbx.com')) return 'facebook';
+    if (user.email?.includes('@gmail.com')) return 'google';
+    if (user.photoURL?.includes('googleusercontent.com')) return 'google';
+    if (user.photoURL?.includes('graph.microsoft.com')) return 'microsoft';
+    if (user.photoURL?.includes('platform-lookaside.fbsbx.com')) return 'facebook';
 
     return 'firebase';
   }
 
   private syntaxHighlightJSON(obj: Record<string, unknown>): string {
-    const json = JSON.stringify(obj, null, 2);
+    // Escape first so a value like "<img onerror=...>" stays text; the
+    // highlighting below only wraps spans around quotes and keywords.
+    const json = escapeHtml(JSON.stringify(obj, null, 2));
 
     return json
-      .replace(/"([^"]+)":/g, '<span class="json-key">"$1"</span>:')
-      .replace(/: "([^"]*)"/g, ': <span class="json-string">"$1"</span>')
+      .replace(/&quot;([^&]+)&quot;:/g, '<span class="json-key">&quot;$1&quot;</span>:')
+      .replace(/: &quot;([^\n]*?)&quot;(,?)$/gm, ': <span class="json-string">&quot;$1&quot;</span>$2')
       .replace(/: (\d+)/g, ': <span class="json-number">$1</span>')
       .replace(/: (true|false)/g, ': <span class="json-boolean">$1</span>')
       .replace(/: null/g, ': <span class="json-null">null</span>');
